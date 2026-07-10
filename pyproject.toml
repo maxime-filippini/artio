@@ -1,0 +1,28 @@
+[project]
+name = "artio"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "Maxime Filippini", email = "maxime.filippini@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.4.2",
+    "polars>=1.42.1",
+    "tomli-w>=1.2.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = ["."]
+
+[tool.uv.sources]
+artio = { workspace = true }
+
+[dependency-groups]
+dev = ["artio"]
+
+[project.scripts]
+artio = "artio.cli:cli"
