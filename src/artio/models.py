@@ -82,6 +82,8 @@ class DiagnosticCode(StrEnum):
     MISSING_WORKFLOW = "missing-workflow"
     UNSUPPORTED_MANAGED_DECORATOR = "unsupported-managed-decorator"
     UNKNOWN_DEPENDENCY = "unknown-dependency"
+    UNSUPPORTED_OUTPUT_DECLARATION = "unsupported-output-declaration"
+    UNKNOWN_OUTPUT_TARGET = "unknown-output-target"
 
 
 @dataclass(frozen=True)

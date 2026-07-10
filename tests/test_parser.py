@@ -81,9 +81,11 @@ def test_parse_workflow_definition_builds_nodes_from_the_managed_template() -> N
     ] == [
         ("source", "source", "source"),
         ("identity", "transformation", "identity"),
+        ("result", "output", None),
     ]
     assert result.workflow.edges == (
         DeclaredEdge(source_id="source", target_id="identity"),
+        DeclaredEdge(source_id="identity", target_id="result"),
     )
     assert (
         result.workflow.nodes[0].span.start.line
@@ -154,3 +156,18 @@ def clean_orders(
     assert result.workflow is not None
     assert result.workflow.edges == ()
     assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_DEPENDENCY
+
+
+def test_parse_workflow_definition_reports_an_unknown_output_target() -> None:
+    result = parse_workflow_definition(
+        """
+workflow = Workflow("main")
+
+workflow.output("result", "missing")
+"""
+    )
+
+    assert result.workflow is not None
+    assert [node.id for node in result.workflow.nodes] == ["result"]
+    assert result.workflow.edges == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_OUTPUT_TARGET

@@ -26,6 +26,12 @@ class _ParsedManagedNode:
     declaration: FunctionDeclaration
 
 
+@dataclass(frozen=True)
+class _ParsedOutput:
+    node: ManagedNode
+    target_id: str
+
+
 def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
     """Parse one managed Workflow definition without executing its source."""
     try:
@@ -58,15 +64,33 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
 
     workflow_name, workflow_variable = workflow_binding
     parsed_nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
-    edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
+    parsed_outputs, output_diagnostics = _parse_outputs(module, workflow_variable)
+    dependency_edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
+    output_edges, output_edge_diagnostics = _parse_output_edges(
+        parsed_outputs,
+        parsed_nodes,
+    )
     return ParseResult(
         workflow=WorkflowGraph(
             name=workflow_name,
             revision=revision,
-            nodes=tuple(parsed.node for parsed in parsed_nodes),
-            edges=edges,
+            nodes=tuple(
+                sorted(
+                    (
+                        *(parsed.node for parsed in parsed_nodes),
+                        *(parsed.node for parsed in parsed_outputs),
+                    ),
+                    key=lambda node: node.span.start,
+                )
+            ),
+            edges=(*dependency_edges, *output_edges),
         ),
-        diagnostics=(*diagnostics, *edge_diagnostics),
+        diagnostics=(
+            *diagnostics,
+            *output_diagnostics,
+            *edge_diagnostics,
+            *output_edge_diagnostics,
+        ),
     )
 
 
@@ -208,6 +232,85 @@ def _parse_declared_edges(
                     target_id=parsed.node.id,
                 )
             )
+
+    return tuple(edges), tuple(diagnostics)
+
+
+def _parse_outputs(
+    module: ast.Module, workflow_variable: str
+) -> tuple[tuple[_ParsedOutput, ...], tuple[Diagnostic, ...]]:
+    outputs: list[_ParsedOutput] = []
+    diagnostics: list[Diagnostic] = []
+    for statement in module.body:
+        match statement:
+            case ast.Expr(value=ast.Call() as call) if _matches_decorator(
+                call,
+                decorator_module=workflow_variable,
+                decorator_name="output",
+            ):
+                output = _parse_output_declaration(call, workflow_variable)
+                if isinstance(output, Diagnostic):
+                    diagnostics.append(output)
+                else:
+                    outputs.append(output)
+
+    return tuple(outputs), tuple(diagnostics)
+
+
+def _parse_output_declaration(
+    call: ast.Call, workflow_variable: str
+) -> _ParsedOutput | Diagnostic:
+    match call:
+        case ast.Call(
+            args=[ast.Constant(value=output_id), ast.Constant(value=target_id)],
+            keywords=[],
+        ) if isinstance(output_id, str) and isinstance(target_id, str):
+            return _ParsedOutput(
+                node=ManagedNode(
+                    id=output_id,
+                    kind=ManagedNodeKind.OUTPUT,
+                    span=_source_span(call),
+                ),
+                target_id=target_id,
+            )
+        case _:
+            return Diagnostic(
+                code=DiagnosticCode.UNSUPPORTED_OUTPUT_DECLARATION,
+                message=(
+                    f"{workflow_variable}.output requires literal output and target IDs"
+                ),
+                severity=DiagnosticSeverity.ERROR,
+                span=_source_span(call),
+            )
+
+
+def _parse_output_edges(
+    parsed_outputs: tuple[_ParsedOutput, ...],
+    parsed_nodes: tuple[_ParsedManagedNode, ...],
+) -> tuple[tuple[DeclaredEdge, ...], tuple[Diagnostic, ...]]:
+    declared_node_ids = {parsed.node.id for parsed in parsed_nodes}
+    edges: list[DeclaredEdge] = []
+    diagnostics: list[Diagnostic] = []
+    for output in parsed_outputs:
+        if output.target_id not in declared_node_ids:
+            diagnostics.append(
+                Diagnostic(
+                    code=DiagnosticCode.UNKNOWN_OUTPUT_TARGET,
+                    message=(
+                        f"Output {output.node.id!r} targets unknown declaration "
+                        f"{output.target_id!r}"
+                    ),
+                    severity=DiagnosticSeverity.ERROR,
+                    span=output.node.span,
+                )
+            )
+            continue
+        edges.append(
+            DeclaredEdge(
+                source_id=output.target_id,
+                target_id=output.node.id,
+            )
+        )
 
     return tuple(edges), tuple(diagnostics)
 
