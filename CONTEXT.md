@@ -16,6 +16,14 @@ _Avoid_: Graph definition, visual definition
 A derived directed acyclic graph that represents the data dependencies and transformations in a Workflow definition for visualization and structured editing.
 _Avoid_: Workflow definition, pipeline
 
+**Workflow revision**:
+A monotonically increasing version of a successfully derived Workflow graph. A failed reconciliation does not create a new revision.
+_Avoid_: File version, source revision
+
+**Source span**:
+The inclusive-start, exclusive-end location of a declaration or Diagnostic in a Workflow definition, expressed as a one-based line and zero-based column.
+_Avoid_: Source range, offset
+
 **Transformation**:
 A named Workflow graph node that accepts one or more upstream Polars lazy frames and returns a Polars lazy frame using ordinary Polars code. Managed Transformations are lazy-first.
 _Avoid_: Step, task, operator
