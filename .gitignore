@@ -12,3 +12,5 @@ wheels/
 
 .vscode
 .todo
+.pytest_cache
+.scratch

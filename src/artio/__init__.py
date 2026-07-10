@@ -1,2 +1,4 @@
-def hello() -> str:
-    return "Hello from artio!"
+from artio.workflow import Depends
+from artio.workflow import Workflow
+
+__all__ = ["Workflow", "Depends"]

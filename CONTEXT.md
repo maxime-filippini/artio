@@ -48,12 +48,16 @@ _Avoid_: Proven correct, assertion-passing
 A source, Transformation, or output declaration that Artio can identify and modify structurally in a Workflow definition. Transformations are declared as decorated Python functions.
 _Avoid_: Generated code, visual node
 
+**Module setup**:
+Ordinary top-level Python in a Workflow definition that runs when Artio loads the module but does not declare, form part of, or receive structural edits to the Workflow graph.
+_Avoid_: Graph node, managed code
+
 **Opaque transformation**:
 A Managed Transformation whose declared identity and dependencies are understood by Artio but whose body is not in the supported visual Polars subset.
 _Avoid_: Invalid transformation, hidden node
 
 **Reconciliation**:
-The process of parsing a changed Workflow definition and synchronizing its supported graph representation, diagnostics, and Preview with the client.
+The process of loading a changed Workflow definition in an isolated worker, deriving its declarations and dependency metadata, parsing its Transformation bodies, and synchronizing its supported graph representation, diagnostics, and Preview with the client. Module setup is executed but remains outside the graph and structural-editing boundary.
 _Avoid_: Code generation, file sync
 
 **Preview**:
