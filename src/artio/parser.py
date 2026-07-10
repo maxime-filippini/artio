@@ -1,4 +1,4 @@
-"""Static discovery helpers for managed Artio workflow modules."""
+"""Static discovery helpers for managed workflow modules."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def find_decorated_functions(
     return tuple(
         statement
         for statement in module.body
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef)
         and any(
             _matches_decorator(
                 decorator,
