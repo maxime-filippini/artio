@@ -22,7 +22,10 @@ members = ["."]
 artio = { workspace = true }
 
 [dependency-groups]
-dev = ["artio"]
+dev = [
+    "artio",
+    "pytest>=8.0",
+]
 
 [project.scripts]
 artio = "artio.cli:cli"
