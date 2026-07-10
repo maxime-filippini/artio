@@ -13,10 +13,12 @@ DEFAULT_WORKFLOW_FILENAME = "workflow.py"
 DEFAULT_WORKFLOW_NAME = "main"
 
 WORKFLOW_TEMPLATE = '''\
+from typing import Annotated
+
 import polars as pl
 
+from artio import Depends
 from artio import Workflow
-
 
 workflow = Workflow("main")
 
@@ -27,13 +29,14 @@ def source() -> pl.LazyFrame:
     return pl.LazyFrame()
 
 
-@workflow.transform("identity", inputs=("source",))
-def identity(source: pl.LazyFrame) -> pl.LazyFrame:
+@workflow.transform("identity")
+def identity(source: Annotated[pl.LazyFrame, Depends(source)]) -> pl.LazyFrame:
     """Add Polars transformations here."""
     return source
 
 
 workflow.output("result", "identity")
+
 '''
 
 
