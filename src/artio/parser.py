@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from artio.models import DeclaredEdge
 from artio.models import Diagnostic
+from artio.models import DiagnosticCode
 from artio.models import DiagnosticSeverity
 from artio.models import ManagedNode
 from artio.models import ManagedNodeKind
@@ -34,7 +35,7 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
             workflow=None,
             diagnostics=(
                 Diagnostic(
-                    code="invalid-python",
+                    code=DiagnosticCode.INVALID_PYTHON,
                     message=error.msg,
                     severity=DiagnosticSeverity.ERROR,
                     span=_syntax_error_span(error),
@@ -48,7 +49,7 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
             workflow=None,
             diagnostics=(
                 Diagnostic(
-                    code="missing-workflow",
+                    code=DiagnosticCode.MISSING_WORKFLOW,
                     message="Expected one top-level Workflow declaration",
                     severity=DiagnosticSeverity.ERROR,
                 ),
@@ -190,7 +191,7 @@ def _parse_declared_edges(
             if dependency_id is None:
                 diagnostics.append(
                     Diagnostic(
-                        code="unknown-dependency",
+                        code=DiagnosticCode.UNKNOWN_DEPENDENCY,
                         message=(
                             f"Transformation {parsed.node.id!r} depends on "
                             f"unknown declaration {dependency_name!r}"
@@ -267,7 +268,7 @@ def _parse_node_declaration(
             node_id = _literal_declaration_id(decorator)
             if node_id is None:
                 return Diagnostic(
-                    code="unsupported-managed-decorator",
+                    code=DiagnosticCode.UNSUPPORTED_MANAGED_DECORATOR,
                     message=(
                         f"@{workflow_variable}.{decorator_name} requires one "
                         "literal string ID"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 
 from artio.models import DeclaredEdge
+from artio.models import DiagnosticCode
 from artio.parser import find_decorated_functions
 from artio.parser import parse_workflow_definition
 from artio.workspace import WORKFLOW_TEMPLATE
@@ -94,7 +95,7 @@ def test_parse_workflow_definition_reports_invalid_python() -> None:
     result = parse_workflow_definition("workflow = Workflow(\n")
 
     assert result.workflow is None
-    assert result.diagnostics[0].code == "invalid-python"
+    assert result.diagnostics[0].code is DiagnosticCode.INVALID_PYTHON
     assert result.diagnostics[0].span is not None
 
 
@@ -110,7 +111,7 @@ def source(): pass
 
     assert result.workflow is not None
     assert result.workflow.nodes == ()
-    assert result.diagnostics[0].code == "unsupported-managed-decorator"
+    assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_MANAGED_DECORATOR
 
 
 def test_parse_workflow_definition_resolves_dependencies_by_function_name() -> None:
@@ -152,4 +153,4 @@ def clean_orders(
 
     assert result.workflow is not None
     assert result.workflow.edges == ()
-    assert result.diagnostics[0].code == "unknown-dependency"
+    assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_DEPENDENCY

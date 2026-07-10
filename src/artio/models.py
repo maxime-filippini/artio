@@ -77,11 +77,18 @@ class DiagnosticSeverity(StrEnum):
     WARNING = "warning"
 
 
+class DiagnosticCode(StrEnum):
+    INVALID_PYTHON = "invalid-python"
+    MISSING_WORKFLOW = "missing-workflow"
+    UNSUPPORTED_MANAGED_DECORATOR = "unsupported-managed-decorator"
+    UNKNOWN_DEPENDENCY = "unknown-dependency"
+
+
 @dataclass(frozen=True)
 class Diagnostic:
     """A non-destructive finding about a Workflow definition."""
 
-    code: str
+    code: DiagnosticCode
     message: str
     severity: DiagnosticSeverity
     span: SourceSpan | None = None
