@@ -57,7 +57,7 @@ class Workspace:
         return self.path / DEFAULT_WORKFLOW_FILENAME
 
     @classmethod
-    def initialize(cls, path: Path) -> "Workspace":
+    def initialize(cls, path: Path) -> Workspace:
         """Create the smallest usable Artio workspace without overwriting files."""
         workspace = cls(path.expanduser().resolve())
 
