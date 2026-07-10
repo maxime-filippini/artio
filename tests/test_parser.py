@@ -5,9 +5,11 @@ import ast
 from artio.parser import find_decorated_functions
 
 
-def test_find_decorated_functions_returns_matching_top_level_functions_in_order() -> None:
+def test_find_decorated_functions_returns_matching_top_level_functions_in_order() -> (
+    None
+):
     module = ast.parse(
-        '''
+        """
 @workflow.transform("second")
 def second(): pass
 
@@ -16,7 +18,7 @@ def orders(): pass
 
 @workflow.transform("third")
 def third(): pass
-'''
+"""
     )
 
     functions = find_decorated_functions(
@@ -28,10 +30,10 @@ def third(): pass
 
 def test_find_decorated_functions_accepts_a_direct_decorator_reference() -> None:
     module = ast.parse(
-        '''
+        """
 @workflow.source
 def orders(): pass
-'''
+"""
     )
 
     functions = find_decorated_functions(
@@ -43,7 +45,7 @@ def orders(): pass
 
 def test_find_decorated_functions_excludes_dynamic_and_nested_decorators() -> None:
     module = ast.parse(
-        '''
+        """
 @factory.workflow.transform("dynamic")
 def dynamic(): pass
 
@@ -53,7 +55,7 @@ class Example:
 
 @workflow.source("orders")
 def orders(): pass
-'''
+"""
     )
 
     functions = find_decorated_functions(
