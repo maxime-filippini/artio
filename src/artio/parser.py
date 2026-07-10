@@ -88,15 +88,17 @@ def find_decorated_functions(
 def _matches_decorator(
     decorator: ast.expr, *, decorator_module: str, decorator_name: str
 ) -> bool:
-    if isinstance(decorator, ast.Call):
-        decorator = decorator.func
-
-    return (
-        isinstance(decorator, ast.Attribute)
-        and decorator.attr == decorator_name
-        and isinstance(decorator.value, ast.Name)
-        and decorator.value.id == decorator_module
-    )
+    match decorator:
+        case ast.Call(func=decorator_function):
+            return _matches_decorator(
+                decorator_function,
+                decorator_module=decorator_module,
+                decorator_name=decorator_name,
+            )
+        case ast.Attribute(value=ast.Name(id=module), attr=name):
+            return module == decorator_module and name == decorator_name
+        case _:
+            return False
 
 
 def _find_workflow_binding(module: ast.Module) -> tuple[str, str] | None:
@@ -109,25 +111,18 @@ def _find_workflow_binding(module: ast.Module) -> tuple[str, str] | None:
 
 
 def _workflow_binding(statement: ast.stmt) -> tuple[str, str] | None:
-    if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
-        return None
-    if not isinstance(statement.targets[0], ast.Name):
-        return None
-    if not isinstance(statement.value, ast.Call):
-        return None
-    if (
-        not isinstance(statement.value.func, ast.Name)
-        or statement.value.func.id != "Workflow"
-    ):
-        return None
-    if statement.value.keywords or len(statement.value.args) != 1:
-        return None
-    if not isinstance(statement.value.args[0], ast.Constant):
-        return None
-    if not isinstance(statement.value.args[0].value, str):
-        return None
-
-    return statement.value.args[0].value, statement.targets[0].id
+    match statement:
+        case ast.Assign(
+            targets=[ast.Name(id=variable)],
+            value=ast.Call(
+                func=ast.Name(id="Workflow"),
+                args=[ast.Constant(value=workflow_name)],
+                keywords=[],
+            ),
+        ) if isinstance(workflow_name, str):
+            return workflow_name, variable
+        case _:
+            return None
 
 
 def _parse_managed_nodes(
@@ -213,14 +208,14 @@ def _matching_decorator(
 
 
 def _literal_declaration_id(decorator: ast.expr) -> str | None:
-    if not isinstance(decorator, ast.Call):
-        return None
-    if decorator.keywords or len(decorator.args) != 1:
-        return None
-    argument = decorator.args[0]
-    if not isinstance(argument, ast.Constant) or not isinstance(argument.value, str):
-        return None
-    return argument.value
+    match decorator:
+        case ast.Call(
+            args=[ast.Constant(value=node_id)],
+            keywords=[],
+        ) if isinstance(node_id, str):
+            return node_id
+        case _:
+            return None
 
 
 def _declaration_span(declaration: FunctionDeclaration) -> SourceSpan:
