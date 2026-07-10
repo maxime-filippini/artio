@@ -2,7 +2,8 @@ import pathlib
 
 import click
 
-from artio.workspace import Workspace, WorkspaceAlreadyInitializedError
+from artio.workspace import Workspace
+from artio.workspace import WorkspaceAlreadyInitializedError
 
 
 @click.group()

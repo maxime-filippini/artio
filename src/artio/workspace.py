@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from artio.config import Config, WorkflowConfig
+from artio.config import Config
+from artio.config import WorkflowConfig
 
 MANIFEST_FILENAME = "artio.toml"
 DEFAULT_WORKFLOW_FILENAME = "workflow.py"
