@@ -23,3 +23,8 @@ separate issues for substantial follow-up work that can be reviewed and shipped
 independently; keep closely coupled checklist items together. Link commits and
 pull requests to their issue, and use `Closes #<issue-number>` in the PR body
 when the PR completes the issue.
+
+## Verification
+
+Before pushing code changes, run `uv run ruff format --check .`, `uv run pytest`,
+`uv run ruff check .`, and `uv run ty check` locally.
