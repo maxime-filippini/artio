@@ -41,18 +41,31 @@ def init(path: pathlib.Path) -> None:
     ),
 )
 def parse(path: pathlib.Path) -> None:
-    with open(path) as fd:
-        source = fd.read()
+    """Display the Workflow graph and Diagnostics parsed from PATH."""
+    source = path.read_text(encoding="utf-8")
 
-    out = parser.parse_workflow_definition(source, revision=1)
+    result = parser.parse_workflow_definition(source, revision=1)
 
-    if out.workflow is not None:
+    if result.workflow is not None:
         click.echo("Workflow found:")
-        click.echo(f"  ID: {out.workflow.name}")
+        click.echo(f"  ID: {result.workflow.name}")
         click.echo("  Nodes:")
 
-        for node in out.workflow.nodes:
-            click.echo(f"  - {node.id!r}")
+        for node in result.workflow.nodes:
+            click.echo(f"  - {node.id!r} ({node.kind})")
+
+        click.echo("  Edges:")
+        for edge in result.workflow.edges:
+            click.echo(f"  - {edge.source_id!r} -> {edge.target_id!r}")
+
+    if result.diagnostics:
+        click.echo("Diagnostics:")
+        for diagnostic in result.diagnostics:
+            click.echo(
+                "  - "
+                f"{diagnostic.severity.value} "
+                f"{diagnostic.code.value}: {diagnostic.message}"
+            )
 
 
 if __name__ == "__main__":

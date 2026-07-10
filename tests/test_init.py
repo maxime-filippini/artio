@@ -49,3 +49,26 @@ def test_cli_reports_an_existing_workspace_as_an_error(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Refusing to overwrite existing file" in result.output
+
+
+def test_cli_parse_displays_edges_and_diagnostics(tmp_path: Path) -> None:
+    definition = tmp_path / "workflow.py"
+    definition.write_text(
+        """\
+workflow = Workflow("main")
+
+@workflow.transform("clean-orders")
+def clean_orders(): pass
+
+workflow.output("result", clean_orders)
+workflow.output("broken", missing)
+""",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli, ["parse", str(definition)])
+
+    assert result.exit_code == 0
+    assert "'clean-orders' -> 'result'" in result.output
+    assert "Diagnostics:" in result.output
+    assert "unknown-output-target" in result.output

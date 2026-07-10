@@ -280,7 +280,8 @@ def _parse_output_declaration(
             return Diagnostic(
                 code=DiagnosticCode.UNSUPPORTED_OUTPUT_DECLARATION,
                 message=(
-                    f"{workflow_variable}.output requires literal output and target IDs"
+                    f"{workflow_variable}.output requires a literal output ID and a "
+                    "direct Transformation reference"
                 ),
                 severity=DiagnosticSeverity.ERROR,
                 span=_source_span(call),

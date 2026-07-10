@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from artio.models import DeclaredEdge
 from artio.models import DiagnosticCode
 from artio.parser import find_decorated_functions
@@ -171,3 +173,57 @@ workflow.output("result", missing)
     assert [node.id for node in result.workflow.nodes] == ["result"]
     assert result.workflow.edges == ()
     assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_OUTPUT_TARGET
+
+
+def test_parse_workflow_definition_resolves_an_output_by_transformation_name() -> None:
+    result = parse_workflow_definition(
+        """
+workflow = Workflow("main")
+
+@workflow.transform("clean-orders")
+def clean_orders(): pass
+
+workflow.output("result", clean_orders)
+"""
+    )
+
+    assert result.workflow is not None
+    assert result.workflow.edges == (
+        DeclaredEdge(source_id="clean-orders", target_id="result"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_parse_workflow_definition_rejects_a_source_as_an_output_target() -> None:
+    result = parse_workflow_definition(
+        """
+workflow = Workflow("main")
+
+@workflow.source("orders")
+def orders(): pass
+
+workflow.output("result", orders)
+"""
+    )
+
+    assert result.workflow is not None
+    assert [node.id for node in result.workflow.nodes] == ["orders", "result"]
+    assert result.workflow.edges == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_OUTPUT_TARGET
+
+
+@pytest.mark.parametrize("target", ['"clean-orders"', "None"])
+def test_parse_workflow_definition_rejects_non_reference_output_targets(
+    target: str,
+) -> None:
+    result = parse_workflow_definition(
+        f"""\
+workflow = Workflow("main")
+
+workflow.output("result", {target})
+"""
+    )
+
+    assert result.workflow is not None
+    assert result.workflow.nodes == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_OUTPUT_DECLARATION
