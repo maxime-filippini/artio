@@ -84,7 +84,6 @@ def test_cli_reports_an_existing_workspace_as_an_error(tmp_path: Path) -> None:
     assert "Refusing to overwrite existing file" in result.output
 
 
-
 def test_cli_parse_displays_edges_and_diagnostics(tmp_path: Path) -> None:
     definition = tmp_path / "workflow.py"
     definition.write_text(
@@ -107,6 +106,7 @@ workflow.output("broken", missing)
     assert "Diagnostics:" in result.output
     assert "unknown-output-target" in result.output
 
+
 def test_cli_force_replaces_an_existing_workspace(tmp_path: Path) -> None:
     Workspace.initialize(tmp_path)
 
@@ -114,4 +114,3 @@ def test_cli_force_replaces_an_existing_workspace(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert "Initialized Artio workspace" in result.output
-
