@@ -16,6 +16,12 @@ When starting work that needs a new branch, create it locally, push it to the
 GitHub repository, and make the work's first reviewable commit. Then create a
 pull request with `develop` as its base branch using the GitHub CLI.
 
+Keep commits small and legible, but keep pull requests behaviorally complete:
+each PR should deliver a coherent, demonstrable outcome rather than an unused
+internal implementation step. Keep a draft PR open and continue building on it
+until that outcome is ready for review. Split work into a separate PR only when
+the component has an independently valuable boundary.
+
 ## Issue workflow
 
 Track each independently deliverable vertical slice as one GitHub issue. Use
