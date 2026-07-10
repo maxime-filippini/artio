@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from artio.cli import cli
+from artio.config import Config
 from artio.workspace import WORKFLOW_TEMPLATE
 from artio.workspace import Workspace
 from artio.workspace import WorkspaceAlreadyInitializedError
@@ -42,6 +43,38 @@ def test_initialize_does_not_replace_existing_managed_file(tmp_path: Path) -> No
     assert not (tmp_path / "workflow.py").exists()
 
 
+def test_initialize_force_replaces_existing_managed_files(tmp_path: Path) -> None:
+    manifest = tmp_path / "artio.toml"
+    workflow = tmp_path / "workflow.py"
+    manifest.write_text("old manifest", encoding="utf-8")
+    workflow.write_text("old workflow", encoding="utf-8")
+
+    workspace = Workspace.initialize(tmp_path, force=True)
+
+    assert workspace.manifest_path.read_text(encoding="utf-8") != "old manifest"
+    assert workspace.workflow_path.read_text(encoding="utf-8") == WORKFLOW_TEMPLATE
+
+
+def test_initialize_force_preserves_existing_files_when_staging_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = tmp_path / "artio.toml"
+    workflow = tmp_path / "workflow.py"
+    manifest.write_text("old manifest", encoding="utf-8")
+    workflow.write_text("old workflow", encoding="utf-8")
+
+    def fail_to_write_manifest(self: Config, path: Path) -> None:
+        raise OSError("write failed")
+
+    monkeypatch.setattr(Config, "write_toml", fail_to_write_manifest)
+
+    with pytest.raises(OSError, match="write failed"):
+        Workspace.initialize(tmp_path, force=True)
+
+    assert manifest.read_text(encoding="utf-8") == "old manifest"
+    assert workflow.read_text(encoding="utf-8") == "old workflow"
+
+
 def test_cli_reports_an_existing_workspace_as_an_error(tmp_path: Path) -> None:
     Workspace.initialize(tmp_path)
 
@@ -49,6 +82,7 @@ def test_cli_reports_an_existing_workspace_as_an_error(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Refusing to overwrite existing file" in result.output
+
 
 
 def test_cli_parse_displays_edges_and_diagnostics(tmp_path: Path) -> None:
@@ -72,3 +106,12 @@ workflow.output("broken", missing)
     assert "'clean-orders' -> 'result'" in result.output
     assert "Diagnostics:" in result.output
     assert "unknown-output-target" in result.output
+
+def test_cli_force_replaces_an_existing_workspace(tmp_path: Path) -> None:
+    Workspace.initialize(tmp_path)
+
+    result = CliRunner().invoke(cli, ["init", "--force", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "Initialized Artio workspace" in result.output
+

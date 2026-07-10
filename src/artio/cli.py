@@ -18,11 +18,13 @@ def cli():
     type=click.Path(path_type=pathlib.Path),
     default=pathlib.Path.cwd(),
 )
-def init(path: pathlib.Path) -> None:
+@click.option("--force", is_flag=True)
+def init(path: pathlib.Path, force: bool) -> None:
     """Create a new Artio workspace at PATH."""
+
     try:
-        workspace = Workspace.initialize(path)
-    except (WorkspaceAlreadyInitializedError, NotADirectoryError) as error:
+        workspace = Workspace.initialize(path, force=force)
+    except (NotADirectoryError, WorkspaceAlreadyInitializedError) as error:
         raise click.ClickException(str(error)) from error
 
     click.echo(f"Initialized Artio workspace at {workspace.path}")

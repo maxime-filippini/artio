@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from artio.config import Config
 from artio.config import WorkflowConfig
@@ -57,8 +58,8 @@ class Workspace:
         return self.path / DEFAULT_WORKFLOW_FILENAME
 
     @classmethod
-    def initialize(cls, path: Path) -> Workspace:
-        """Create the smallest usable Artio workspace without overwriting files."""
+    def initialize(cls, path: Path, force: bool = False) -> Workspace:
+        """Create the smallest usable Artio workspace, overwriting when forced."""
         workspace = cls(path.expanduser().resolve())
 
         if workspace.path.exists() and not workspace.path.is_dir():
@@ -69,7 +70,7 @@ class Workspace:
         # Check before making a directory so a failed initialization is side-effect
         # free for an existing workspace.
         for candidate in (workspace.manifest_path, workspace.workflow_path):
-            if candidate.exists():
+            if candidate.exists() and not force:
                 raise WorkspaceAlreadyInitializedError(
                     f"Refusing to overwrite existing file: {candidate}"
                 )
@@ -84,14 +85,37 @@ class Workspace:
             )
         )
 
+        # We write both files to temporary files
+        manifest_temp: Path | None = None
+        workflow_temp: Path | None = None
         try:
-            config.write_toml(workspace.manifest_path)
-            workspace.workflow_path.write_text(WORKFLOW_TEMPLATE, encoding="utf-8")
+            with NamedTemporaryFile(
+                dir=workspace.path,
+                prefix=f".{MANIFEST_FILENAME}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary_file:
+                manifest_temp = Path(temporary_file.name)
+
+            with NamedTemporaryFile(
+                dir=workspace.path,
+                prefix=f".{DEFAULT_WORKFLOW_FILENAME}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary_file:
+                workflow_temp = Path(temporary_file.name)
+
+            config.write_toml(manifest_temp)
+            workflow_temp.write_text(WORKFLOW_TEMPLATE, encoding="utf-8")
+
+            manifest_temp.replace(workspace.manifest_path)
+            workflow_temp.replace(workspace.workflow_path)
+
         except Exception:
-            # Do not leave a half-created managed workspace when a write fails.
-            for candidate in (workspace.manifest_path, workspace.workflow_path):
-                if candidate.exists():
-                    candidate.unlink()
+            # Never delete existing managed files after a failed forced init.
+            for temporary_path in (manifest_temp, workflow_temp):
+                if temporary_path is not None:
+                    temporary_path.unlink(missing_ok=True)
             raise
 
         return workspace
