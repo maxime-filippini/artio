@@ -93,7 +93,9 @@ class Workflow:
         default_factory=dict[str, WorkflowTransformation]
     )
 
-    outputs: dict[str, str] = field(default_factory=dict[str, str])
+    outputs: dict[str, WorkflowTransformation] = field(
+        default_factory=dict[str, WorkflowTransformation]
+    )
 
     def source(self, id: str):
         # Register a source on the workflow
@@ -115,5 +117,5 @@ class Workflow:
 
         return declare
 
-    def output(self, name: str, transformation: str) -> None:
+    def output(self, name: str, transformation: WorkflowTransformation) -> None:
         self.outputs[name] = transformation
