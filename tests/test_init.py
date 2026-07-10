@@ -28,7 +28,7 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
-    assert module.workflow.outputs == {"result": "identity"}
+    assert module.workflow.outputs == {"result": module.identity}
 
 
 def test_initialize_does_not_replace_existing_managed_file(tmp_path: Path) -> None:

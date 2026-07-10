@@ -163,7 +163,7 @@ def test_parse_workflow_definition_reports_an_unknown_output_target() -> None:
         """
 workflow = Workflow("main")
 
-workflow.output("result", "missing")
+workflow.output("result", missing)
 """
     )
 

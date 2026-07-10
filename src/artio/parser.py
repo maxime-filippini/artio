@@ -29,7 +29,7 @@ class _ParsedManagedNode:
 @dataclass(frozen=True)
 class _ParsedOutput:
     node: ManagedNode
-    target_id: str
+    target_func_name: str
 
 
 def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
@@ -182,6 +182,7 @@ def _parse_managed_nodes(
     diagnostics: list[Diagnostic] = []
     for declaration in declarations:
         parsed = _parse_node_declaration(declaration, workflow_variable)
+
         if isinstance(parsed, Diagnostic):
             diagnostics.append(parsed)
         else:
@@ -241,6 +242,7 @@ def _parse_outputs(
 ) -> tuple[tuple[_ParsedOutput, ...], tuple[Diagnostic, ...]]:
     outputs: list[_ParsedOutput] = []
     diagnostics: list[Diagnostic] = []
+
     for statement in module.body:
         match statement:
             case ast.Expr(value=ast.Call() as call) if _matches_decorator(
@@ -249,6 +251,7 @@ def _parse_outputs(
                 decorator_name="output",
             ):
                 output = _parse_output_declaration(call, workflow_variable)
+
                 if isinstance(output, Diagnostic):
                     diagnostics.append(output)
                 else:
@@ -262,16 +265,16 @@ def _parse_output_declaration(
 ) -> _ParsedOutput | Diagnostic:
     match call:
         case ast.Call(
-            args=[ast.Constant(value=output_id), ast.Constant(value=target_id)],
+            args=[ast.Constant(value=output_id), ast.Name(id=target_func_name)],
             keywords=[],
-        ) if isinstance(output_id, str) and isinstance(target_id, str):
+        ) if isinstance(output_id, str):
             return _ParsedOutput(
                 node=ManagedNode(
                     id=output_id,
                     kind=ManagedNodeKind.OUTPUT,
                     span=_source_span(call),
                 ),
-                target_id=target_id,
+                target_func_name=target_func_name,
             )
         case _:
             return Diagnostic(
@@ -288,26 +291,36 @@ def _parse_output_edges(
     parsed_outputs: tuple[_ParsedOutput, ...],
     parsed_nodes: tuple[_ParsedManagedNode, ...],
 ) -> tuple[tuple[DeclaredEdge, ...], tuple[Diagnostic, ...]]:
-    declared_node_ids = {parsed.node.id for parsed in parsed_nodes}
+    transformations_by_function_name = {
+        parsed.node.function_name: parsed.node.id
+        for parsed in parsed_nodes
+        if parsed.node.kind is ManagedNodeKind.TRANSFORMATION
+        and parsed.node.function_name is not None
+    }
+
     edges: list[DeclaredEdge] = []
     diagnostics: list[Diagnostic] = []
+
     for output in parsed_outputs:
-        if output.target_id not in declared_node_ids:
+        target_id = transformations_by_function_name.get(output.target_func_name)
+
+        if target_id is None:
             diagnostics.append(
                 Diagnostic(
                     code=DiagnosticCode.UNKNOWN_OUTPUT_TARGET,
                     message=(
                         f"Output {output.node.id!r} targets unknown declaration "
-                        f"{output.target_id!r}"
+                        f"{output.target_func_name!r}"
                     ),
                     severity=DiagnosticSeverity.ERROR,
                     span=output.node.span,
                 )
             )
             continue
+
         edges.append(
             DeclaredEdge(
-                source_id=output.target_id,
+                source_id=target_id,
                 target_id=output.node.id,
             )
         )

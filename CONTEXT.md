@@ -20,6 +20,14 @@ _Avoid_: Workflow definition, pipeline
 A monotonically increasing version of a successfully derived Workflow graph. A failed reconciliation does not create a new revision.
 _Avoid_: File version, source revision
 
+**Workflow input schema**:
+The named, typed contract declared by a Workflow for execution-time values shared by its Sources and Transformations. Workflow inputs are not Workflow graph nodes or dependency edges.
+_Avoid_: Source schema, DAG parameter
+
+**Workflow input**:
+A validated value supplied for one field of a Workflow input schema for a particular execution.
+_Avoid_: Source, dependency, global variable
+
 **Source span**:
 The inclusive-start, exclusive-end location of a declaration or Diagnostic in a Workflow definition, expressed as a one-based line and zero-based column.
 _Avoid_: Source range, offset

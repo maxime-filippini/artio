@@ -35,7 +35,7 @@ def identity(source: Annotated[pl.LazyFrame, Depends(source)]) -> pl.LazyFrame:
     return source
 
 
-workflow.output("result", "identity")
+workflow.output("result", identity)
 
 '''
 
