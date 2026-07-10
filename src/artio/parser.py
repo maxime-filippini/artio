@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 
+from artio.models import DeclaredEdge
 from artio.models import Diagnostic
 from artio.models import DiagnosticSeverity
 from artio.models import ManagedNode
@@ -15,6 +17,12 @@ from artio.models import WorkflowGraph
 
 type FunctionDeclaration = ast.FunctionDef | ast.AsyncFunctionDef
 type SourceLocatedNode = ast.expr | ast.stmt
+
+
+@dataclass(frozen=True)
+class _ParsedManagedNode:
+    node: ManagedNode
+    declaration: FunctionDeclaration
 
 
 def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
@@ -48,15 +56,16 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
         )
 
     workflow_name, workflow_variable = workflow_binding
-    nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
+    parsed_nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
+    edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
     return ParseResult(
         workflow=WorkflowGraph(
             name=workflow_name,
             revision=revision,
-            nodes=nodes,
-            edges=(),
+            nodes=tuple(parsed.node for parsed in parsed_nodes),
+            edges=edges,
         ),
-        diagnostics=diagnostics,
+        diagnostics=(*diagnostics, *edge_diagnostics),
     )
 
 
@@ -127,7 +136,7 @@ def _workflow_binding(statement: ast.stmt) -> tuple[str, str] | None:
 
 def _parse_managed_nodes(
     module: ast.Module, workflow_variable: str
-) -> tuple[tuple[ManagedNode, ...], tuple[Diagnostic, ...]]:
+) -> tuple[tuple[_ParsedManagedNode, ...], tuple[Diagnostic, ...]]:
     declarations = sorted(
         (
             *find_decorated_functions(
@@ -144,16 +153,102 @@ def _parse_managed_nodes(
         key=lambda declaration: (declaration.lineno, declaration.col_offset),
     )
 
-    nodes: list[ManagedNode] = []
+    nodes: list[_ParsedManagedNode] = []
     diagnostics: list[Diagnostic] = []
     for declaration in declarations:
         parsed = _parse_node_declaration(declaration, workflow_variable)
         if isinstance(parsed, Diagnostic):
             diagnostics.append(parsed)
         else:
-            nodes.append(parsed)
+            nodes.append(_ParsedManagedNode(node=parsed, declaration=declaration))
 
     return tuple(nodes), tuple(diagnostics)
+
+
+def _parse_declared_edges(
+    parsed_nodes: tuple[_ParsedManagedNode, ...],
+) -> tuple[tuple[DeclaredEdge, ...], tuple[Diagnostic, ...]]:
+    node_ids_by_function_name = {
+        parsed.node.function_name: parsed.node.id
+        for parsed in parsed_nodes
+        if parsed.node.function_name is not None
+    }
+    edges: list[DeclaredEdge] = []
+    diagnostics: list[Diagnostic] = []
+
+    for parsed in parsed_nodes:
+        if parsed.node.kind is not ManagedNodeKind.TRANSFORMATION:
+            continue
+
+        for parameter in _parameters(parsed.declaration):
+            dependency = _depends_reference(parameter.annotation)
+            if dependency is None:
+                continue
+
+            dependency_name, dependency_expression = dependency
+            dependency_id = node_ids_by_function_name.get(dependency_name)
+            if dependency_id is None:
+                diagnostics.append(
+                    Diagnostic(
+                        code="unknown-dependency",
+                        message=(
+                            f"Transformation {parsed.node.id!r} depends on "
+                            f"unknown declaration {dependency_name!r}"
+                        ),
+                        severity=DiagnosticSeverity.ERROR,
+                        span=_source_span(dependency_expression),
+                    )
+                )
+                continue
+
+            edges.append(
+                DeclaredEdge(
+                    source_id=dependency_id,
+                    target_id=parsed.node.id,
+                )
+            )
+
+    return tuple(edges), tuple(diagnostics)
+
+
+def _parameters(declaration: FunctionDeclaration) -> tuple[ast.arg, ...]:
+    return (
+        *declaration.args.posonlyargs,
+        *declaration.args.args,
+        *declaration.args.kwonlyargs,
+    )
+
+
+def _depends_reference(
+    annotation: ast.expr | None,
+) -> tuple[str, ast.expr] | None:
+    match annotation:
+        case ast.Subscript(
+            value=ast.Name(id="Annotated"),
+            slice=ast.Tuple(elts=[_, *metadata]),
+        ):
+            return next(
+                (
+                    dependency
+                    for item in metadata
+                    if (dependency := _depends_call(item)) is not None
+                ),
+                None,
+            )
+        case _:
+            return None
+
+
+def _depends_call(expression: ast.expr) -> tuple[str, ast.expr] | None:
+    match expression:
+        case ast.Call(
+            func=ast.Name(id="Depends"),
+            args=[ast.Name(id=dependency_name)],
+            keywords=[],
+        ):
+            return dependency_name, expression
+        case _:
+            return None
 
 
 def _parse_node_declaration(

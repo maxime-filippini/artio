@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 
+from artio.models import DeclaredEdge
 from artio.parser import find_decorated_functions
 from artio.parser import parse_workflow_definition
 from artio.workspace import WORKFLOW_TEMPLATE
@@ -80,7 +81,9 @@ def test_parse_workflow_definition_builds_nodes_from_the_managed_template() -> N
         ("source", "source", "source"),
         ("identity", "transformation", "identity"),
     ]
-    assert result.workflow.edges == ()
+    assert result.workflow.edges == (
+        DeclaredEdge(source_id="source", target_id="identity"),
+    )
     assert (
         result.workflow.nodes[0].span.start.line
         < result.workflow.nodes[0].span.end.line
@@ -108,3 +111,45 @@ def source(): pass
     assert result.workflow is not None
     assert result.workflow.nodes == ()
     assert result.diagnostics[0].code == "unsupported-managed-decorator"
+
+
+def test_parse_workflow_definition_resolves_dependencies_by_function_name() -> None:
+    result = parse_workflow_definition(
+        """
+from typing import Annotated
+
+workflow = Workflow("main")
+
+@workflow.source("raw-orders")
+def raw_orders(): pass
+
+@workflow.transform("clean-orders")
+def clean_orders(
+    orders: Annotated[LazyFrame, Depends(raw_orders)],
+): pass
+"""
+    )
+
+    assert result.workflow is not None
+    assert result.workflow.edges == (
+        DeclaredEdge(source_id="raw-orders", target_id="clean-orders"),
+    )
+
+
+def test_parse_workflow_definition_reports_an_unknown_dependency() -> None:
+    result = parse_workflow_definition(
+        """
+from typing import Annotated
+
+workflow = Workflow("main")
+
+@workflow.transform("clean-orders")
+def clean_orders(
+    orders: Annotated[LazyFrame, Depends(missing_source)],
+): pass
+"""
+    )
+
+    assert result.workflow is not None
+    assert result.workflow.edges == ()
+    assert result.diagnostics[0].code == "unknown-dependency"
