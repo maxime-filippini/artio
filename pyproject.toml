@@ -18,11 +18,24 @@ members = ["."]
 artio = { workspace = true }
 
 [dependency-groups]
-dev = ["artio", "pytest>=8.0"]
+dev = [
+    "artio",
+    "pytest>=8.0",
+    "ruff>=0.15.21",
+    "ty>=0.0.58",
+]
 
 [project.scripts]
 artio = "artio.cli:cli"
 
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
+
+[tool.ty.environment]
+root = ["src"]

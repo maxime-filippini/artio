@@ -7,11 +7,9 @@ import pytest
 from click.testing import CliRunner
 
 from artio.cli import cli
-from artio.workspace import (
-    WORKFLOW_TEMPLATE,
-    Workspace,
-    WorkspaceAlreadyInitializedError,
-)
+from artio.workspace import WORKFLOW_TEMPLATE
+from artio.workspace import Workspace
+from artio.workspace import WorkspaceAlreadyInitializedError
 
 
 def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> None:
