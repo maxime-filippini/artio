@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import tokenize
 from dataclasses import dataclass
+from dataclasses import replace
+from io import StringIO
 
 from artio.models import DecisionTree
 from artio.models import DecisionTreeBranch
@@ -14,6 +17,7 @@ from artio.models import DiagnosticSeverity
 from artio.models import Fixture
 from artio.models import ManagedNode
 from artio.models import ManagedNodeKind
+from artio.models import OpaqueBody
 from artio.models import ParseResult
 from artio.models import SourcePosition
 from artio.models import SourceSpan
@@ -44,13 +48,18 @@ class _WorkflowBinding:
     input_model_name: str | None
 
 
-def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
+def parse_workflow_definition(
+    source: str,
+    *,
+    revision: int = 1,
+    previous: ParseResult | None = None,
+) -> ParseResult:
     """Parse one managed Workflow definition without executing its source."""
     try:
         module = ast.parse(source)
     except SyntaxError as error:
         return ParseResult(
-            workflow=None,
+            workflow=previous.workflow if previous is not None else None,
             diagnostics=(
                 Diagnostic(
                     code=DiagnosticCode.INVALID_PYTHON,
@@ -59,6 +68,8 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
                     span=_syntax_error_span(error),
                 ),
             ),
+            fixtures=previous.fixtures if previous is not None else (),
+            decision_trees=previous.decision_trees if previous is not None else (),
         )
 
     workflow_binding = _find_workflow_binding(module)
@@ -83,7 +94,11 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
     decision_trees, decision_tree_diagnostics = _parse_decision_trees(
         module, workflow_variable
     )
-    parsed_nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
+    parsed_nodes, diagnostics = _parse_managed_nodes(
+        module,
+        workflow_variable,
+        source,
+    )
     parsed_outputs, output_diagnostics = _parse_outputs(module, workflow_variable)
     dependency_edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
     output_edges, output_edge_diagnostics = _parse_output_edges(
@@ -273,7 +288,9 @@ def _is_pydantic_model(declaration: ast.ClassDef) -> bool:
 
 
 def _parse_managed_nodes(
-    module: ast.Module, workflow_variable: str
+    module: ast.Module,
+    workflow_variable: str,
+    source: str,
 ) -> tuple[tuple[_ParsedManagedNode, ...], tuple[Diagnostic, ...]]:
     declarations = sorted(
         (
@@ -299,9 +316,60 @@ def _parse_managed_nodes(
         if isinstance(parsed, Diagnostic):
             diagnostics.append(parsed)
         else:
+            if parsed.kind is ManagedNodeKind.TRANSFORMATION:
+                parsed = replace(
+                    parsed,
+                    opaque_body=_opaque_transformation_body(source, declaration),
+                )
             nodes.append(_ParsedManagedNode(node=parsed, declaration=declaration))
 
     return tuple(nodes), tuple(diagnostics)
+
+
+def _opaque_transformation_body(
+    source: str,
+    declaration: FunctionDeclaration,
+) -> OpaqueBody:
+    """Retain a Transformation body without interpreting or reformatting it."""
+    last_statement = declaration.body[-1]
+    start_offset = _function_body_start_offset(source, declaration)
+    span = SourceSpan(
+        start=_source_position_at_offset(source, start_offset),
+        end=_source_end_position(last_statement),
+    )
+    return OpaqueBody(source=_source_text(source, span), span=span)
+
+
+def _function_body_start_offset(source: str, declaration: FunctionDeclaration) -> int:
+    """Find the first non-whitespace character after a function signature."""
+    found_declaration = False
+    nesting = 0
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if not found_declaration:
+            if (
+                token.type == tokenize.NAME
+                and token.string == "def"
+                and (token.start[0] == declaration.lineno)
+            ):
+                found_declaration = True
+            continue
+
+        if token.type != tokenize.OP:
+            continue
+        if token.string in "([{":
+            nesting += 1
+        elif token.string in ")]}":
+            nesting -= 1
+        elif token.string == ":" and nesting == 0:
+            offset = _source_offset(
+                source,
+                SourcePosition(line=token.end[0], column=token.end[1]),
+            )
+            while offset < len(source) and source[offset].isspace():
+                offset += 1
+            return offset
+
+    raise ValueError("A function declaration must have a body")
 
 
 def _parse_fixtures(
@@ -844,6 +912,24 @@ def _syntax_error_span(error: SyntaxError) -> SourceSpan | None:
 
 def _source_span(node: SourceLocatedNode) -> SourceSpan:
     return SourceSpan(start=_source_position(node), end=_source_end_position(node))
+
+
+def _source_text(source: str, span: SourceSpan) -> str:
+    return source[_source_offset(source, span.start) : _source_offset(source, span.end)]
+
+
+def _source_offset(source: str, position: SourcePosition) -> int:
+    line_starts = [0]
+    for index, character in enumerate(source):
+        if character == "\n":
+            line_starts.append(index + 1)
+    return line_starts[position.line - 1] + position.column
+
+
+def _source_position_at_offset(source: str, offset: int) -> SourcePosition:
+    line = source.count("\n", 0, offset) + 1
+    line_start = source.rfind("\n", 0, offset) + 1
+    return SourcePosition(line=line, column=offset - line_start)
 
 
 def _source_position(node: SourceLocatedNode) -> SourcePosition:

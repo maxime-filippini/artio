@@ -8,6 +8,7 @@ from artio.models import DeclaredEdge
 from artio.models import Fixture
 from artio.models import ManagedNode
 from artio.models import ManagedNodeKind
+from artio.models import OpaqueBody
 from artio.models import SourcePosition
 from artio.models import SourceSpan
 from artio.models import WorkflowGraph
@@ -42,6 +43,23 @@ def test_workflow_graph_captures_nodes_edges_and_revision() -> None:
 
     assert graph.nodes == (source, transformation)
     assert graph.edges == (DeclaredEdge(source_id="orders", target_id="clean_orders"),)
+
+
+def test_managed_node_retains_an_opaque_transformation_body() -> None:
+    span = SourceSpan(
+        start=SourcePosition(line=3, column=4),
+        end=SourcePosition(line=4, column=16),
+    )
+    body = OpaqueBody(source="return orders", span=span)
+    node = ManagedNode(
+        id="clean-orders",
+        kind=ManagedNodeKind.TRANSFORMATION,
+        function_name="clean_orders",
+        span=span,
+        opaque_body=body,
+    )
+
+    assert node.opaque_body == body
 
 
 def test_workflow_graph_captures_inputs_and_consumers_outside_the_dag() -> None:

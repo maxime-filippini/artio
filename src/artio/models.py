@@ -41,6 +41,14 @@ class ManagedNodeKind(StrEnum):
 
 
 @dataclass(frozen=True)
+class OpaqueBody:
+    """Untouched source retained for a managed declaration body."""
+
+    source: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
 class ManagedNode:
     """A source, Transformation, or Output declaration in a Workflow graph."""
 
@@ -48,6 +56,7 @@ class ManagedNode:
     kind: ManagedNodeKind
     span: SourceSpan
     function_name: str | None = None
+    opaque_body: OpaqueBody | None = None
 
 
 @dataclass(frozen=True)

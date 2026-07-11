@@ -220,6 +220,50 @@ def test_parse_workflow_definition_reports_invalid_python() -> None:
     assert result.diagnostics[0].span is not None
 
 
+def test_parse_workflow_definition_retains_the_previous_valid_graph_on_syntax_error() -> (
+    None
+):
+    previous = parse_workflow_definition(
+        """\
+workflow = Workflow("main")
+
+@workflow.transform("clean-orders")
+def clean_orders():
+    return make_orders()
+"""
+    )
+
+    result = parse_workflow_definition(
+        "workflow = Workflow(\n",
+        revision=2,
+        previous=previous,
+    )
+
+    assert result.workflow == previous.workflow
+    assert result.diagnostics[0].code is DiagnosticCode.INVALID_PYTHON
+
+
+def test_parse_workflow_definition_retains_opaque_transformation_source() -> None:
+    result = parse_workflow_definition(
+        """\
+workflow = Workflow("main")
+
+@workflow.transform("clean-orders")
+def clean_orders():
+    # This body is intentionally not interpreted by Artio.
+    return dynamic_operation("orders")
+"""
+    )
+
+    assert result.workflow is not None
+    transformation = result.workflow.nodes[0]
+    assert transformation.opaque_body is not None
+    assert transformation.opaque_body.source == (
+        "# This body is intentionally not interpreted by Artio.\n"
+        '    return dynamic_operation("orders")'
+    )
+
+
 def test_parse_workflow_definition_reports_an_unsupported_declaration() -> None:
     result = parse_workflow_definition(
         """
@@ -232,6 +276,24 @@ def source(): pass
 
     assert result.workflow is not None
     assert result.workflow.nodes == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_MANAGED_DECORATOR
+
+
+def test_parse_workflow_definition_keeps_valid_nodes_beside_unsupported_ones() -> None:
+    result = parse_workflow_definition(
+        """\
+workflow = Workflow("main")
+
+@workflow.transform("valid")
+def valid(): pass
+
+@workflow.transform(dynamic_id)
+def unsupported(): pass
+"""
+    )
+
+    assert result.workflow is not None
+    assert [node.id for node in result.workflow.nodes] == ["valid"]
     assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_MANAGED_DECORATOR
 
 
