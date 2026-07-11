@@ -19,10 +19,15 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     workspace = Workspace.initialize(tmp_path / "demo")
 
     assert workspace.manifest_path.read_text(encoding="utf-8") == (
-        "workflow = [\n"
-        '    { name = "main", path = "workflow.py", source_fixture = { source = "source" } },\n'
-        "]\n\n"
-        "[workspace]\nversion = 1\n"
+        "[workspace]\n"
+        "version = 1\n"
+        "\n"
+        "[[workflow]]\n"
+        'name = "main"\n'
+        'path = "workflow.py"\n'
+        "\n"
+        "[workflow.source_fixture]\n"
+        'source = "source"\n'
     )
     assert workspace.workflow_path.read_text(encoding="utf-8") == WORKFLOW_TEMPLATE
     assert pl.read_parquet(workspace.fixture_path).to_dicts() == [

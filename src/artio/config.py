@@ -50,22 +50,25 @@ class Config:
 
     def to_toml(self) -> str:
         """Return the manifest in the stable format written by ``artio init``."""
-        return tomli_w.dumps(
-            {
-                "workspace": {"version": self.version},
-                "workflow": [
-                    {
-                        "name": workflow.name,
-                        "path": workflow.path.as_posix(),
-                        "source_fixture": {
-                            binding.source_id: binding.fixture_id
-                            for binding in workflow.source_fixture_bindings
-                        },
-                    }
-                    for workflow in self.workflows
-                ],
-            }
-        )
+        lines = ["[workspace]", f"version = {self.version}"]
+
+        for workflow in self.workflows:
+            lines.extend(
+                (
+                    "",
+                    "[[workflow]]",
+                    f"name = {_toml_value(workflow.name)}",
+                    f"path = {_toml_value(workflow.path.as_posix())}",
+                )
+            )
+            if workflow.source_fixture_bindings:
+                lines.extend(("", "[workflow.source_fixture]"))
+                lines.extend(
+                    f"{binding.source_id} = {_toml_value(binding.fixture_id)}"
+                    for binding in workflow.source_fixture_bindings
+                )
+
+        return "\n".join(lines) + "\n"
 
     @classmethod
     def read_toml(cls, path: Path) -> Config:
@@ -99,3 +102,8 @@ class Config:
         later workspace-editing operations.
         """
         path.write_text(self.to_toml(), encoding="utf-8")
+
+
+def _toml_value(value: str) -> str:
+    """Encode a string with the manifest writer's TOML quoting rules."""
+    return tomli_w.dumps({"value": value}).split("=", maxsplit=1)[1].strip()
