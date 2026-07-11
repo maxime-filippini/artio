@@ -89,6 +89,9 @@ def test_parse_workflow_definition_builds_nodes_from_the_managed_template() -> N
         DeclaredEdge(source_id="source", target_id="identity"),
         DeclaredEdge(source_id="identity", target_id="result"),
     )
+    assert [decision_tree.id for decision_tree in result.decision_trees] == [
+        "source-tier"
+    ]
     assert (
         result.workflow.nodes[0].span.start.line
         < result.workflow.nodes[0].span.end.line
@@ -143,6 +146,58 @@ def orders_fixture() -> pl.LazyFrame:
 
     assert result.fixtures == ()
     assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_FIXTURE_DECLARATION
+
+
+def test_parse_workflow_definition_builds_decision_tree_branch_structure() -> None:
+    result = parse_workflow_definition(
+        '''\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.decision_tree("order-tier")
+def order_tier(amount: pl.Expr, blocked: pl.Expr) -> pl.Expr:
+    """Classify an order without interpreting its branch expressions."""
+    return (
+        pl.when((amount > 100) & blocked.not_())
+        .then(pl.lit("priority"))
+        .when(amount.is_null())
+        .then(default_tier(amount))
+        .otherwise(pl.lit("standard"))
+    )
+'''
+    )
+
+    assert result.diagnostics == ()
+    assert len(result.decision_trees) == 1
+    decision_tree = result.decision_trees[0]
+    assert decision_tree.id == "order-tier"
+    assert decision_tree.function_name == "order_tier"
+    assert decision_tree.parameters == ("amount", "blocked")
+    assert len(decision_tree.branches) == 2
+    assert decision_tree.branches[0].condition_span.start.line == 9
+    assert decision_tree.branches[1].result_span.start.line == 12
+    assert decision_tree.otherwise_span.start.line == 13
+
+
+def test_parse_workflow_definition_requires_decision_tree_otherwise() -> None:
+    result = parse_workflow_definition(
+        """\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.decision_tree("order-tier")
+def order_tier(amount: pl.Expr) -> pl.Expr:
+    return pl.when(amount > 100).then(pl.lit("priority"))
+"""
+    )
+
+    assert result.decision_trees == ()
+    assert (
+        result.diagnostics[0].code
+        is DiagnosticCode.UNSUPPORTED_DECISION_TREE_DECLARATION
+    )
 
 
 def test_parse_workflow_definition_reports_invalid_python() -> None:

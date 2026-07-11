@@ -40,6 +40,12 @@ def source_fixture() -> pl.LazyFrame:
     return pl.scan_parquet("fixtures/source.parquet")
 
 
+@workflow.decision_tree("source-tier")
+def source_tier(id: pl.Expr) -> pl.Expr:
+    """Classify sample rows by their identifier."""
+    return pl.when(id == 1).then(pl.lit("first")).otherwise(pl.lit("later"))
+
+
 @workflow.source("source")
 def source() -> pl.LazyFrame:
     """Declare the source used by previews."""

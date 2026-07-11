@@ -82,6 +82,26 @@ class Fixture:
     span: SourceSpan
 
 
+@dataclass(frozen=True)
+class DecisionTreeBranch:
+    """One ordered condition and result pair in a Decision tree."""
+
+    condition_span: SourceSpan
+    result_span: SourceSpan
+
+
+@dataclass(frozen=True)
+class DecisionTree:
+    """A reusable conditional expression discovered in a Workflow definition."""
+
+    id: str
+    function_name: str
+    parameters: tuple[str, ...]
+    branches: tuple[DecisionTreeBranch, ...]
+    otherwise_span: SourceSpan
+    span: SourceSpan
+
+
 class DiagnosticSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
@@ -92,6 +112,7 @@ class DiagnosticCode(StrEnum):
     MISSING_WORKFLOW = "missing-workflow"
     UNSUPPORTED_MANAGED_DECORATOR = "unsupported-managed-decorator"
     UNSUPPORTED_FIXTURE_DECLARATION = "unsupported-fixture-declaration"
+    UNSUPPORTED_DECISION_TREE_DECLARATION = "unsupported-decision-tree-declaration"
     UNKNOWN_DEPENDENCY = "unknown-dependency"
     UNSUPPORTED_OUTPUT_DECLARATION = "unsupported-output-declaration"
     UNKNOWN_OUTPUT_TARGET = "unknown-output-target"
@@ -114,3 +135,4 @@ class ParseResult:
     workflow: WorkflowGraph | None
     diagnostics: tuple[Diagnostic, ...]
     fixtures: tuple[Fixture, ...] = ()
+    decision_trees: tuple[DecisionTree, ...] = ()
