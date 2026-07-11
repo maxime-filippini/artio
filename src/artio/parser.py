@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 
+from artio.models import DecisionTree
+from artio.models import DecisionTreeBranch
 from artio.models import DeclaredEdge
 from artio.models import Diagnostic
 from artio.models import DiagnosticCode
@@ -65,6 +67,9 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
 
     workflow_name, workflow_variable = workflow_binding
     fixtures, fixture_diagnostics = _parse_fixtures(module, workflow_variable)
+    decision_trees, decision_tree_diagnostics = _parse_decision_trees(
+        module, workflow_variable
+    )
     parsed_nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
     parsed_outputs, output_diagnostics = _parse_outputs(module, workflow_variable)
     dependency_edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
@@ -89,12 +94,14 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
         ),
         diagnostics=(
             *fixture_diagnostics,
+            *decision_tree_diagnostics,
             *diagnostics,
             *output_diagnostics,
             *edge_diagnostics,
             *output_edge_diagnostics,
         ),
         fixtures=fixtures,
+        decision_trees=decision_trees,
     )
 
 
@@ -247,15 +254,128 @@ def _parse_fixture_declaration(
     )
 
 
-def _fixture_path(declaration: FunctionDeclaration) -> str | None:
-    body = declaration.body
+def _parse_decision_trees(
+    module: ast.Module, workflow_variable: str
+) -> tuple[tuple[DecisionTree, ...], tuple[Diagnostic, ...]]:
+    """Parse Decision tree branch structure without interpreting its expressions."""
+    decision_trees: list[DecisionTree] = []
+    diagnostics: list[Diagnostic] = []
+
+    for declaration in find_decorated_functions(
+        module,
+        decorator_module=workflow_variable,
+        decorator_name="decision_tree",
+    ):
+        parsed = _parse_decision_tree_declaration(declaration, workflow_variable)
+        if isinstance(parsed, Diagnostic):
+            diagnostics.append(parsed)
+        else:
+            decision_trees.append(parsed)
+
+    return tuple(decision_trees), tuple(diagnostics)
+
+
+def _parse_decision_tree_declaration(
+    declaration: FunctionDeclaration, workflow_variable: str
+) -> DecisionTree | Diagnostic:
+    decorator = _matching_decorator(
+        declaration,
+        decorator_module=workflow_variable,
+        decorator_name="decision_tree",
+    )
+    assert decorator is not None
+
+    decision_tree_id = _literal_declaration_id(decorator)
+    parsed_expression = _decision_tree_expression(declaration)
+    if decision_tree_id is not None and parsed_expression is not None:
+        branches, otherwise_span = parsed_expression
+        return DecisionTree(
+            id=decision_tree_id,
+            function_name=declaration.name,
+            parameters=tuple(parameter.arg for parameter in _parameters(declaration)),
+            branches=branches,
+            otherwise_span=otherwise_span,
+            span=_declaration_span(declaration),
+        )
+
+    return Diagnostic(
+        code=DiagnosticCode.UNSUPPORTED_DECISION_TREE_DECLARATION,
+        message=(
+            f"@{workflow_variable}.decision_tree requires one literal string ID "
+            "and a direct pl.when(...).then(...).otherwise(...) return expression"
+        ),
+        severity=DiagnosticSeverity.ERROR,
+        span=_declaration_span(declaration),
+    )
+
+
+def _decision_tree_expression(
+    declaration: FunctionDeclaration,
+) -> tuple[tuple[DecisionTreeBranch, ...], SourceSpan] | None:
+    body = _body_without_docstring(declaration.body)
+    match body:
+        case [ast.Return(value=expression)] if expression is not None:
+            return _when_then_otherwise(expression)
+        case _:
+            return None
+
+
+def _when_then_otherwise(
+    expression: ast.expr,
+) -> tuple[tuple[DecisionTreeBranch, ...], SourceSpan] | None:
+    match expression:
+        case ast.Call(
+            func=ast.Attribute(value=chain, attr="otherwise"),
+            args=[otherwise],
+            keywords=[],
+        ):
+            otherwise_span = _source_span(otherwise)
+        case _:
+            return None
+
+    branches: list[DecisionTreeBranch] = []
+    current_expression = chain
+    while True:
+        match current_expression:
+            case ast.Call(
+                func=ast.Attribute(value=when_call, attr="then"),
+                args=[result],
+                keywords=[],
+            ):
+                match when_call:
+                    case ast.Call(
+                        func=ast.Attribute(value=previous, attr="when"),
+                        args=[condition],
+                        keywords=[],
+                    ):
+                        branches.append(
+                            DecisionTreeBranch(
+                                condition_span=_source_span(condition),
+                                result_span=_source_span(result),
+                            )
+                        )
+                        current_expression = previous
+                    case _:
+                        return None
+            case ast.Name(id="pl"):
+                return tuple(reversed(branches)), otherwise_span
+            case _:
+                return None
+
+
+def _body_without_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
     if (
         body
         and isinstance(body[0], ast.Expr)
         and isinstance(body[0].value, ast.Constant)
         and isinstance(body[0].value.value, str)
     ):
-        body = body[1:]
+        return body[1:]
+    return body
+
+
+def _fixture_path(declaration: FunctionDeclaration) -> str | None:
+    body = _body_without_docstring(declaration.body)
 
     match body:
         case [

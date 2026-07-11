@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from artio.models import DecisionTree
+from artio.models import DecisionTreeBranch
 from artio.models import DeclaredEdge
 from artio.models import Fixture
 from artio.models import ManagedNode
@@ -81,3 +83,22 @@ def test_fixture_captures_its_parquet_path_and_declaration_location() -> None:
     )
 
     assert fixture.path == "fixtures/orders.parquet"
+
+
+def test_decision_tree_captures_ordered_branch_spans() -> None:
+    span = SourceSpan(
+        start=SourcePosition(line=3, column=0),
+        end=SourcePosition(line=5, column=17),
+    )
+    branch = DecisionTreeBranch(condition_span=span, result_span=span)
+
+    decision_tree = DecisionTree(
+        id="order-tier",
+        function_name="order_tier",
+        parameters=("amount",),
+        branches=(branch,),
+        otherwise_span=span,
+        span=span,
+    )
+
+    assert decision_tree.branches == (branch,)

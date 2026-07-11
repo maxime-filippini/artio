@@ -74,8 +74,8 @@ class Fixture:
         self._func = func
 
 
-class DecisionTree:
-    def __init__(self, id: str, func: Callable[[], pl.Expr]):
+class DecisionTree[**P]:
+    def __init__(self, id: str, func: Callable[P, pl.Expr]):
         self.id = id
         self._func = func
 
@@ -99,6 +99,9 @@ class Workflow:
 
     name: str
     fixtures: dict[str, Fixture] = field(default_factory=dict[str, Fixture])
+    decision_trees: dict[str, DecisionTree] = field(
+        default_factory=dict[str, DecisionTree]
+    )
     sources: dict[str, Source] = field(default_factory=dict[str, Source])
     transformations: dict[str, Transformation] = field(
         default_factory=dict[str, Transformation]
@@ -125,6 +128,18 @@ class Workflow:
             fixture = Fixture(id=id, func=func)
             self.fixtures[id] = fixture
             return fixture
+
+        return decorator
+
+    def decision_tree[**P](
+        self, id: str
+    ) -> Callable[[Callable[P, pl.Expr]], DecisionTree[P]]:
+        """Register a reusable Polars expression without executing it."""
+
+        def decorator(func: Callable[P, pl.Expr]) -> DecisionTree[P]:
+            decision_tree = DecisionTree(id=id, func=func)
+            self.decision_trees[id] = decision_tree
+            return decision_tree
 
         return decorator
 

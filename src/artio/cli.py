@@ -65,6 +65,13 @@ def parse(path: pathlib.Path) -> None:
         for fixture in result.fixtures:
             click.echo(f"  - {fixture.id!r}: {fixture.path!r}")
 
+    if result.decision_trees:
+        click.echo("Decision trees:")
+        for decision_tree in result.decision_trees:
+            click.echo(
+                f"  - {decision_tree.id!r} ({len(decision_tree.branches)} branches)"
+            )
+
     if result.diagnostics:
         click.echo("Diagnostics:")
         for diagnostic in result.diagnostics:

@@ -37,6 +37,7 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     specification.loader.exec_module(module)
     assert module.workflow.outputs == {"result": module.identity}
     assert module.workflow.fixtures == {"source": module.source_fixture}
+    assert module.workflow.decision_trees == {"source-tier": module.source_tier}
 
 
 def test_initialize_does_not_replace_existing_managed_file(tmp_path: Path) -> None:
@@ -138,6 +139,28 @@ def orders_fixture() -> pl.LazyFrame:
     assert result.exit_code == 0
     assert "Fixtures:" in result.output
     assert "'orders': 'fixtures/orders.parquet'" in result.output
+
+
+def test_cli_parse_displays_decision_trees(tmp_path: Path) -> None:
+    definition = tmp_path / "workflow.py"
+    definition.write_text(
+        """\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.decision_tree("order-tier")
+def order_tier(amount: pl.Expr) -> pl.Expr:
+    return pl.when(amount > 100).then(pl.lit("priority")).otherwise("standard")
+""",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli, ["parse", str(definition)])
+
+    assert result.exit_code == 0
+    assert "Decision trees:" in result.output
+    assert "'order-tier' (1 branches)" in result.output
 
 
 def test_cli_force_replaces_an_existing_workspace(tmp_path: Path) -> None:
