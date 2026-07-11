@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 import polars as pl
 
 from artio.config import Config
+from artio.config import SourceFixtureBinding
 from artio.config import WorkflowConfig
 
 MANIFEST_FILENAME = "artio.toml"
@@ -120,6 +121,12 @@ class Workspace:
                 WorkflowConfig(
                     name=DEFAULT_WORKFLOW_NAME,
                     path=Path(DEFAULT_WORKFLOW_FILENAME),
+                    source_fixture_bindings=(
+                        SourceFixtureBinding(
+                            source_id="source",
+                            fixture_id="source",
+                        ),
+                    ),
                 ),
             )
         )
