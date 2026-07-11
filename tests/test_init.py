@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from artio.cli import cli
 from artio.config import Config
+from artio.config import SourceFixtureBinding
 from artio.workspace import WORKFLOW_TEMPLATE
 from artio.workspace import Workspace
 from artio.workspace import WorkspaceAlreadyInitializedError
@@ -18,8 +19,15 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     workspace = Workspace.initialize(tmp_path / "demo")
 
     assert workspace.manifest_path.read_text(encoding="utf-8") == (
-        'workflow = [\n    { name = "main", path = "workflow.py" },\n]\n\n'
-        "[workspace]\nversion = 1\n"
+        "[workspace]\n"
+        "version = 1\n"
+        "\n"
+        "[[workflow]]\n"
+        'name = "main"\n'
+        'path = "workflow.py"\n'
+        "\n"
+        "[workflow.source_fixture]\n"
+        'source = "source"\n'
     )
     assert workspace.workflow_path.read_text(encoding="utf-8") == WORKFLOW_TEMPLATE
     assert pl.read_parquet(workspace.fixture_path).to_dicts() == [
@@ -38,6 +46,10 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     assert module.workflow.outputs == {"result": module.identity}
     assert module.workflow.fixtures == {"source": module.source_fixture}
     assert module.workflow.decision_trees == {"source-tier": module.source_tier}
+    config = Config.read_toml(workspace.manifest_path)
+    assert config.workflows[0].source_fixture_bindings == (
+        SourceFixtureBinding(source_id="source", fixture_id="source"),
+    )
 
 
 def test_initialize_does_not_replace_existing_managed_file(tmp_path: Path) -> None:

@@ -84,6 +84,10 @@ _Avoid_: Fixture, production data
 A named Managed node that supplies a Polars lazy frame to a Workflow. A Preview binds each Source independently to local Parquet Sample data.
 _Avoid_: Input, dataset
 
+**Source–Fixture binding**:
+A Workspace-scoped Preview configuration that maps one Workflow Source to one Fixture. It substitutes the Fixture's local Parquet Sample data only during Preview; it does not change the Source's ordinary Workflow behavior.
+_Avoid_: Source fixture, source definition
+
 **Output**:
 A named declaration of a final Workflow lazy frame for previewing and downstream composition. It does not itself write data to an external destination.
 _Avoid_: Sink, export
