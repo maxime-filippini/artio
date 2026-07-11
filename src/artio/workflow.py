@@ -56,19 +56,31 @@ def _validate_func_annotations(func: Callable[..., Any], workflow: Workflow):
             raise ArgumentMissingSourceInformation
 
 
-class WorkflowSource:
+class Source:
     def __init__(self, id: str, func: Callable[[], pl.LazyFrame]) -> None:
         self._func = func
         self.id = id
 
 
-class WorkflowTransformation:
+class Transformation:
     def __init__(self, id: str, func: Callable[..., pl.LazyFrame]) -> None:
         self._func = func
         self.id = id
 
 
-type Dependable = WorkflowSource | WorkflowTransformation
+class Fixture:
+    def __init__(self, id: str, func: Callable[[], pl.LazyFrame]):
+        self.id = id
+        self._func = func
+
+
+class DecisionTree:
+    def __init__(self, id: str, func: Callable[[], pl.Expr]):
+        self.id = id
+        self._func = func
+
+
+type Dependable = Source | Transformation
 
 
 class Depends:
@@ -86,36 +98,45 @@ class Workflow:
     """
 
     name: str
-    sources: dict[str, WorkflowSource] = field(
-        default_factory=dict[str, WorkflowSource]
-    )
-    transformations: dict[str, WorkflowTransformation] = field(
-        default_factory=dict[str, WorkflowTransformation]
+    fixtures: dict[str, Fixture] = field(default_factory=dict[str, Fixture])
+    sources: dict[str, Source] = field(default_factory=dict[str, Source])
+    transformations: dict[str, Transformation] = field(
+        default_factory=dict[str, Transformation]
     )
 
-    outputs: dict[str, WorkflowTransformation] = field(
-        default_factory=dict[str, WorkflowTransformation]
+    outputs: dict[str, Transformation] = field(
+        default_factory=dict[str, Transformation]
     )
 
     def source(self, id: str):
         # Register a source on the workflow
-        def decorator(func: Callable[[], pl.LazyFrame]) -> WorkflowSource:
+        def decorator(func: Callable[[], pl.LazyFrame]) -> Source:
             _validate_func_annotations(func, self)
-            src = WorkflowSource(id=id, func=func)
+            src = Source(id=id, func=func)
             self.sources[id] = src
             return src
 
         return decorator
 
+    def fixture(self, id: str):
+        """Register reusable local sample data without executing it."""
+
+        def decorator(func: Callable[[], pl.LazyFrame]) -> Fixture:
+            fixture = Fixture(id=id, func=func)
+            self.fixtures[id] = fixture
+            return fixture
+
+        return decorator
+
     def transform(self, id: str):
         # Register a transformation on the workflow
-        def declare(func: Callable[..., Any]) -> WorkflowTransformation:
+        def declare(func: Callable[..., Any]) -> Transformation:
             _validate_func_annotations(func, self)
-            transformation = WorkflowTransformation(id=id, func=func)
+            transformation = Transformation(id=id, func=func)
             self.transformations[id] = transformation
             return transformation
 
         return declare
 
-    def output(self, name: str, transformation: WorkflowTransformation) -> None:
+    def output(self, name: str, transformation: Transformation) -> None:
         self.outputs[name] = transformation

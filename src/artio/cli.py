@@ -43,7 +43,7 @@ def init(path: pathlib.Path, force: bool) -> None:
     ),
 )
 def parse(path: pathlib.Path) -> None:
-    """Display the Workflow graph and Diagnostics parsed from PATH."""
+    """Display parsed Workflow artifacts and Diagnostics from PATH."""
     source = path.read_text(encoding="utf-8")
 
     result = parser.parse_workflow_definition(source, revision=1)
@@ -59,6 +59,11 @@ def parse(path: pathlib.Path) -> None:
         click.echo("  Edges:")
         for edge in result.workflow.edges:
             click.echo(f"  - {edge.source_id!r} -> {edge.target_id!r}")
+
+    if result.fixtures:
+        click.echo("Fixtures:")
+        for fixture in result.fixtures:
+            click.echo(f"  - {fixture.id!r}: {fixture.path!r}")
 
     if result.diagnostics:
         click.echo("Diagnostics:")

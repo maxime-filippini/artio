@@ -9,6 +9,7 @@ from artio.models import DeclaredEdge
 from artio.models import Diagnostic
 from artio.models import DiagnosticCode
 from artio.models import DiagnosticSeverity
+from artio.models import Fixture
 from artio.models import ManagedNode
 from artio.models import ManagedNodeKind
 from artio.models import ParseResult
@@ -63,6 +64,7 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
         )
 
     workflow_name, workflow_variable = workflow_binding
+    fixtures, fixture_diagnostics = _parse_fixtures(module, workflow_variable)
     parsed_nodes, diagnostics = _parse_managed_nodes(module, workflow_variable)
     parsed_outputs, output_diagnostics = _parse_outputs(module, workflow_variable)
     dependency_edges, edge_diagnostics = _parse_declared_edges(parsed_nodes)
@@ -86,11 +88,13 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
             edges=(*dependency_edges, *output_edges),
         ),
         diagnostics=(
+            *fixture_diagnostics,
             *diagnostics,
             *output_diagnostics,
             *edge_diagnostics,
             *output_edge_diagnostics,
         ),
+        fixtures=fixtures,
     )
 
 
@@ -189,6 +193,82 @@ def _parse_managed_nodes(
             nodes.append(_ParsedManagedNode(node=parsed, declaration=declaration))
 
     return tuple(nodes), tuple(diagnostics)
+
+
+def _parse_fixtures(
+    module: ast.Module, workflow_variable: str
+) -> tuple[tuple[Fixture, ...], tuple[Diagnostic, ...]]:
+    """Parse direct ``pl.scan_parquet`` Fixture declarations in source order."""
+    fixtures: list[Fixture] = []
+    diagnostics: list[Diagnostic] = []
+
+    for declaration in find_decorated_functions(
+        module,
+        decorator_module=workflow_variable,
+        decorator_name="fixture",
+    ):
+        parsed = _parse_fixture_declaration(declaration, workflow_variable)
+        if isinstance(parsed, Diagnostic):
+            diagnostics.append(parsed)
+        else:
+            fixtures.append(parsed)
+
+    return tuple(fixtures), tuple(diagnostics)
+
+
+def _parse_fixture_declaration(
+    declaration: FunctionDeclaration, workflow_variable: str
+) -> Fixture | Diagnostic:
+    decorator = _matching_decorator(
+        declaration,
+        decorator_module=workflow_variable,
+        decorator_name="fixture",
+    )
+    assert decorator is not None
+
+    fixture_id = _literal_declaration_id(decorator)
+    path = _fixture_path(declaration)
+    if fixture_id is not None and path is not None:
+        return Fixture(
+            id=fixture_id,
+            path=path,
+            function_name=declaration.name,
+            span=_declaration_span(declaration),
+        )
+
+    return Diagnostic(
+        code=DiagnosticCode.UNSUPPORTED_FIXTURE_DECLARATION,
+        message=(
+            f"@{workflow_variable}.fixture requires one literal string ID and a "
+            "body containing only return pl.scan_parquet(<literal path>)"
+        ),
+        severity=DiagnosticSeverity.ERROR,
+        span=_declaration_span(declaration),
+    )
+
+
+def _fixture_path(declaration: FunctionDeclaration) -> str | None:
+    body = declaration.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+
+    match body:
+        case [
+            ast.Return(
+                value=ast.Call(
+                    func=ast.Attribute(value=ast.Name(id="pl"), attr="scan_parquet"),
+                    args=[ast.Constant(value=path), *_],
+                )
+            )
+        ] if isinstance(path, str):
+            return path
+        case _:
+            return None
 
 
 def _parse_declared_edges(
