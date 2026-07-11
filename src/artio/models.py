@@ -72,6 +72,16 @@ class WorkflowGraph:
             raise ValueError("A workflow revision must be at least 1")
 
 
+@dataclass(frozen=True)
+class Fixture:
+    """A reusable local Parquet declaration discovered in a Workflow definition."""
+
+    id: str
+    path: str
+    function_name: str
+    span: SourceSpan
+
+
 class DiagnosticSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
@@ -81,6 +91,7 @@ class DiagnosticCode(StrEnum):
     INVALID_PYTHON = "invalid-python"
     MISSING_WORKFLOW = "missing-workflow"
     UNSUPPORTED_MANAGED_DECORATOR = "unsupported-managed-decorator"
+    UNSUPPORTED_FIXTURE_DECLARATION = "unsupported-fixture-declaration"
     UNKNOWN_DEPENDENCY = "unknown-dependency"
     UNSUPPORTED_OUTPUT_DECLARATION = "unsupported-output-declaration"
     UNKNOWN_OUTPUT_TARGET = "unknown-output-target"
@@ -98,7 +109,8 @@ class Diagnostic:
 
 @dataclass(frozen=True)
 class ParseResult:
-    """The graph and diagnostics produced by parsing one Workflow definition."""
+    """The managed artifacts and diagnostics from one Workflow definition."""
 
     workflow: WorkflowGraph | None
     diagnostics: tuple[Diagnostic, ...]
+    fixtures: tuple[Fixture, ...] = ()

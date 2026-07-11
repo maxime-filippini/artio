@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import polars as pl
 import pytest
 from click.testing import CliRunner
 
@@ -21,6 +22,11 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
         "[workspace]\nversion = 1\n"
     )
     assert workspace.workflow_path.read_text(encoding="utf-8") == WORKFLOW_TEMPLATE
+    assert pl.read_parquet(workspace.fixture_path).to_dicts() == [
+        {"id": 1, "value": "first"},
+        {"id": 2, "value": "second"},
+        {"id": 3, "value": "third"},
+    ]
 
     specification = importlib.util.spec_from_file_location(
         "artio_test_workflow", workspace.workflow_path
@@ -30,6 +36,7 @@ def test_initialize_writes_manifest_and_parseable_workflow(tmp_path: Path) -> No
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     assert module.workflow.outputs == {"result": module.identity}
+    assert module.workflow.fixtures == {"source": module.source_fixture}
 
 
 def test_initialize_does_not_replace_existing_managed_file(tmp_path: Path) -> None:
@@ -48,11 +55,15 @@ def test_initialize_force_replaces_existing_managed_files(tmp_path: Path) -> Non
     workflow = tmp_path / "workflow.py"
     manifest.write_text("old manifest", encoding="utf-8")
     workflow.write_text("old workflow", encoding="utf-8")
+    fixture = tmp_path / "fixtures" / "source.parquet"
+    fixture.parent.mkdir()
+    fixture.write_bytes(b"old fixture")
 
     workspace = Workspace.initialize(tmp_path, force=True)
 
     assert workspace.manifest_path.read_text(encoding="utf-8") != "old manifest"
     assert workspace.workflow_path.read_text(encoding="utf-8") == WORKFLOW_TEMPLATE
+    assert pl.read_parquet(workspace.fixture_path).height == 3
 
 
 def test_initialize_force_preserves_existing_files_when_staging_fails(
@@ -105,6 +116,28 @@ workflow.output("broken", missing)
     assert "'clean-orders' -> 'result'" in result.output
     assert "Diagnostics:" in result.output
     assert "unknown-output-target" in result.output
+
+
+def test_cli_parse_displays_fixtures(tmp_path: Path) -> None:
+    definition = tmp_path / "workflow.py"
+    definition.write_text(
+        """\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.fixture("orders")
+def orders_fixture() -> pl.LazyFrame:
+    return pl.scan_parquet("fixtures/orders.parquet")
+""",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(cli, ["parse", str(definition)])
+
+    assert result.exit_code == 0
+    assert "Fixtures:" in result.output
+    assert "'orders': 'fixtures/orders.parquet'" in result.output
 
 
 def test_cli_force_replaces_an_existing_workspace(tmp_path: Path) -> None:

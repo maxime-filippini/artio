@@ -95,6 +95,56 @@ def test_parse_workflow_definition_builds_nodes_from_the_managed_template() -> N
     )
 
 
+def test_parse_workflow_definition_builds_reusable_parquet_fixtures() -> None:
+    result = parse_workflow_definition(
+        """\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.fixture("orders")
+def orders_fixture() -> pl.LazyFrame:
+    '''Sample orders used by previews.'''
+    return pl.scan_parquet("fixtures/orders.parquet")
+"""
+    )
+
+    assert result.diagnostics == ()
+    assert [
+        (fixture.id, fixture.path, fixture.function_name) for fixture in result.fixtures
+    ] == [
+        ("orders", "fixtures/orders.parquet", "orders_fixture"),
+    ]
+    assert result.fixtures[0].span.start.line == 5
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'return pl.scan_csv("fixtures/orders.csv")',
+        'path = "fixtures/orders.parquet"\n    return pl.scan_parquet(path)',
+        'return pl.scan_parquet("fixtures/orders.parquet").filter(pl.col("id") > 0)',
+    ],
+)
+def test_parse_workflow_definition_rejects_unsupported_fixture_bodies(
+    body: str,
+) -> None:
+    result = parse_workflow_definition(
+        f"""\
+import polars as pl
+
+workflow = Workflow("main")
+
+@workflow.fixture("orders")
+def orders_fixture() -> pl.LazyFrame:
+    {body}
+"""
+    )
+
+    assert result.fixtures == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_FIXTURE_DECLARATION
+
+
 def test_parse_workflow_definition_reports_invalid_python() -> None:
     result = parse_workflow_definition("workflow = Workflow(\n")
 

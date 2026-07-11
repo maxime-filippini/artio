@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from artio.models import DeclaredEdge
+from artio.models import Fixture
 from artio.models import ManagedNode
 from artio.models import ManagedNodeKind
 from artio.models import SourcePosition
@@ -64,3 +65,19 @@ def test_source_span_rejects_an_end_before_its_start() -> None:
 def test_workflow_graph_requires_a_positive_revision() -> None:
     with pytest.raises(ValueError, match="revision must be at least 1"):
         WorkflowGraph(name="main", revision=0, nodes=(), edges=())
+
+
+def test_fixture_captures_its_parquet_path_and_declaration_location() -> None:
+    span = SourceSpan(
+        start=SourcePosition(line=3, column=0),
+        end=SourcePosition(line=5, column=17),
+    )
+
+    fixture = Fixture(
+        id="orders",
+        path="fixtures/orders.parquet",
+        function_name="orders_fixture",
+        span=span,
+    )
+
+    assert fixture.path == "fixtures/orders.parquet"
