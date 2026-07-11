@@ -5,7 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 authors = [{ name = "Maxime Filippini", email = "maxime.filippini@gmail.com" }]
 requires-python = ">=3.13"
-dependencies = ["click>=8.4.2", "polars>=1.42.1", "tomli-w>=1.2.0"]
+dependencies = [
+    "click>=8.4.2",
+    "polars>=1.42.1",
+    "pydantic>=2.0",
+    "tomli-w>=1.2.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]

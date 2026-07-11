@@ -60,6 +60,28 @@ def parse(path: pathlib.Path) -> None:
         for edge in result.workflow.edges:
             click.echo(f"  - {edge.source_id!r} -> {edge.target_id!r}")
 
+        if result.workflow.inputs:
+            click.echo("  Inputs:")
+            for workflow_input in result.workflow.inputs:
+                default = (
+                    f" = {workflow_input.default_expression}"
+                    if workflow_input.default_expression is not None
+                    else ""
+                )
+                click.echo(
+                    "  - "
+                    f"{workflow_input.id!r}: {workflow_input.type_expression}{default}"
+                )
+
+        if result.workflow.input_consumers:
+            click.echo("  Input consumers:")
+            for consumer in result.workflow.input_consumers:
+                click.echo(
+                    "  - "
+                    f"{consumer.input_id!r} -> {consumer.node_id!r} "
+                    f"({consumer.parameter_name})"
+                )
+
     if result.fixtures:
         click.echo("Fixtures:")
         for fixture in result.fixtures:

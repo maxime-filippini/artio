@@ -13,3 +13,19 @@ class ArgumentDependsOnNonExistentComponentError(Exception):
 
 class ArgumentMissingSourceInformation(Exception):
     pass
+
+
+class InputRequiresInputModelError(Exception):
+    pass
+
+
+class UnknownWorkflowInputError(Exception):
+    pass
+
+
+class InvalidWorkflowInputModelError(TypeError):
+    pass
+
+
+class InvalidWorkflowRunInputsError(TypeError):
+    pass
