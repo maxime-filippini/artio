@@ -18,6 +18,8 @@ from artio.models import ParseResult
 from artio.models import SourcePosition
 from artio.models import SourceSpan
 from artio.models import WorkflowGraph
+from artio.models import WorkflowInput
+from artio.models import WorkflowInputConsumer
 
 type FunctionDeclaration = ast.FunctionDef | ast.AsyncFunctionDef
 type SourceLocatedNode = ast.expr | ast.stmt
@@ -33,6 +35,13 @@ class _ParsedManagedNode:
 class _ParsedOutput:
     node: ManagedNode
     target_func_name: str
+
+
+@dataclass(frozen=True)
+class _WorkflowBinding:
+    name: str
+    variable: str
+    input_model_name: str | None
 
 
 def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
@@ -65,7 +74,11 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
             ),
         )
 
-    workflow_name, workflow_variable = workflow_binding
+    workflow_name = workflow_binding.name
+    workflow_variable = workflow_binding.variable
+    inputs, input_diagnostics = _parse_workflow_inputs(
+        module, workflow_binding.input_model_name
+    )
     fixtures, fixture_diagnostics = _parse_fixtures(module, workflow_variable)
     decision_trees, decision_tree_diagnostics = _parse_decision_trees(
         module, workflow_variable
@@ -76,6 +89,11 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
     output_edges, output_edge_diagnostics = _parse_output_edges(
         parsed_outputs,
         parsed_nodes,
+    )
+    input_consumers, input_consumer_diagnostics = _parse_input_consumers(
+        parsed_nodes,
+        workflow_variable,
+        inputs,
     )
     return ParseResult(
         workflow=WorkflowGraph(
@@ -91,14 +109,18 @@ def parse_workflow_definition(source: str, *, revision: int = 1) -> ParseResult:
                 )
             ),
             edges=(*dependency_edges, *output_edges),
+            inputs=inputs,
+            input_consumers=input_consumers,
         ),
         diagnostics=(
+            *input_diagnostics,
             *fixture_diagnostics,
             *decision_tree_diagnostics,
             *diagnostics,
             *output_diagnostics,
             *edge_diagnostics,
             *output_edge_diagnostics,
+            *input_consumer_diagnostics,
         ),
         fixtures=fixtures,
         decision_trees=decision_trees,
@@ -146,7 +168,7 @@ def _matches_decorator(
             return False
 
 
-def _find_workflow_binding(module: ast.Module) -> tuple[str, str] | None:
+def _find_workflow_binding(module: ast.Module) -> _WorkflowBinding | None:
     bindings = tuple(
         binding
         for statement in module.body
@@ -155,19 +177,99 @@ def _find_workflow_binding(module: ast.Module) -> tuple[str, str] | None:
     return bindings[0] if len(bindings) == 1 else None
 
 
-def _workflow_binding(statement: ast.stmt) -> tuple[str, str] | None:
+def _workflow_binding(statement: ast.stmt) -> _WorkflowBinding | None:
     match statement:
         case ast.Assign(
             targets=[ast.Name(id=variable)],
             value=ast.Call(
                 func=ast.Name(id="Workflow"),
                 args=[ast.Constant(value=workflow_name)],
-                keywords=[],
+                keywords=keywords,
             ),
         ) if isinstance(workflow_name, str):
-            return workflow_name, variable
+            input_model_name = next(
+                (
+                    keyword.value.id
+                    for keyword in keywords
+                    if keyword.arg == "inputs" and isinstance(keyword.value, ast.Name)
+                ),
+                None,
+            )
+            if all(keyword.arg == "inputs" for keyword in keywords):
+                return _WorkflowBinding(
+                    name=workflow_name,
+                    variable=variable,
+                    input_model_name=input_model_name,
+                )
         case _:
             return None
+
+    return None
+
+
+def _parse_workflow_inputs(
+    module: ast.Module, input_model_name: str | None
+) -> tuple[tuple[WorkflowInput, ...], tuple[Diagnostic, ...]]:
+    if input_model_name is None:
+        return (), ()
+
+    declaration = next(
+        (
+            statement
+            for statement in module.body
+            if isinstance(statement, ast.ClassDef)
+            and statement.name == input_model_name
+        ),
+        None,
+    )
+    if declaration is None or not _is_pydantic_model(declaration):
+        return (), (
+            Diagnostic(
+                code=DiagnosticCode.UNSUPPORTED_INPUT_MODEL,
+                message=(
+                    "Workflow inputs must name a top-level Pydantic BaseModel class"
+                ),
+                severity=DiagnosticSeverity.ERROR,
+                span=_source_span(declaration) if declaration is not None else None,
+            ),
+        )
+
+    inputs: list[WorkflowInput] = []
+    for statement in _body_without_docstring(declaration.body):
+        match statement:
+            case ast.AnnAssign(target=ast.Name(id=input_id), annotation=annotation):
+                default = statement.value
+                inputs.append(
+                    WorkflowInput(
+                        id=input_id,
+                        type_expression=ast.unparse(annotation),
+                        default_expression=(
+                            ast.unparse(default) if default is not None else None
+                        ),
+                        span=_source_span(statement),
+                    )
+                )
+            case _:
+                return (), (
+                    Diagnostic(
+                        code=DiagnosticCode.UNSUPPORTED_INPUT_MODEL,
+                        message=(
+                            "Workflow input models support only annotated field "
+                            "declarations"
+                        ),
+                        severity=DiagnosticSeverity.ERROR,
+                        span=_source_span(statement),
+                    ),
+                )
+
+    return tuple(inputs), ()
+
+
+def _is_pydantic_model(declaration: ast.ClassDef) -> bool:
+    return any(
+        isinstance(base, ast.Name) and base.id == "BaseModel"
+        for base in declaration.bases
+    )
 
 
 def _parse_managed_nodes(
@@ -437,6 +539,55 @@ def _parse_declared_edges(
     return tuple(edges), tuple(diagnostics)
 
 
+def _parse_input_consumers(
+    parsed_nodes: tuple[_ParsedManagedNode, ...],
+    workflow_variable: str,
+    inputs: tuple[WorkflowInput, ...],
+) -> tuple[tuple[WorkflowInputConsumer, ...], tuple[Diagnostic, ...]]:
+    """Discover typed input uses without turning them into DAG edges."""
+    input_ids = {input.id for input in inputs}
+    consumers: list[WorkflowInputConsumer] = []
+    diagnostics: list[Diagnostic] = []
+
+    for parsed in parsed_nodes:
+        if parsed.node.kind is not ManagedNodeKind.TRANSFORMATION:
+            continue
+
+        for parameter in _parameters(parsed.declaration):
+            input_reference = _workflow_input_reference(
+                parameter.annotation,
+                workflow_variable,
+            )
+            if input_reference is None:
+                continue
+
+            input_id, expression = input_reference
+            if input_id not in input_ids:
+                diagnostics.append(
+                    Diagnostic(
+                        code=DiagnosticCode.UNKNOWN_WORKFLOW_INPUT,
+                        message=(
+                            f"Transformation {parsed.node.id!r} consumes "
+                            f"unknown Workflow input {input_id!r}"
+                        ),
+                        severity=DiagnosticSeverity.ERROR,
+                        span=_source_span(expression),
+                    )
+                )
+                continue
+
+            consumers.append(
+                WorkflowInputConsumer(
+                    input_id=input_id,
+                    node_id=parsed.node.id,
+                    parameter_name=parameter.arg,
+                    span=_source_span(expression),
+                )
+            )
+
+    return tuple(consumers), tuple(diagnostics)
+
+
 def _parse_outputs(
     module: ast.Module, workflow_variable: str
 ) -> tuple[tuple[_ParsedOutput, ...], tuple[Diagnostic, ...]]:
@@ -553,6 +704,46 @@ def _depends_reference(
                 ),
                 None,
             )
+        case _:
+            return None
+
+
+def _workflow_input_reference(
+    annotation: ast.expr | None,
+    workflow_variable: str,
+) -> tuple[str, ast.expr] | None:
+    match annotation:
+        case ast.Subscript(
+            value=ast.Name(id="Annotated"),
+            slice=ast.Tuple(elts=[_, *metadata]),
+        ):
+            return next(
+                (
+                    reference
+                    for item in metadata
+                    if (reference := _workflow_input_call(item, workflow_variable))
+                    is not None
+                ),
+                None,
+            )
+        case _:
+            return None
+
+
+def _workflow_input_call(
+    expression: ast.expr,
+    workflow_variable: str,
+) -> tuple[str, ast.expr] | None:
+    match expression:
+        case ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id=variable),
+                attr="input",
+            ),
+            args=[ast.Constant(value=input_id)],
+            keywords=[],
+        ) if variable == workflow_variable and isinstance(input_id, str):
+            return input_id, expression
         case _:
             return None
 

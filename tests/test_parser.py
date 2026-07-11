@@ -92,6 +92,18 @@ def test_parse_workflow_definition_builds_nodes_from_the_managed_template() -> N
     assert [decision_tree.id for decision_tree in result.decision_trees] == [
         "source-tier"
     ]
+    assert [
+        (
+            workflow_input.id,
+            workflow_input.type_expression,
+            workflow_input.default_expression,
+        )
+        for workflow_input in result.workflow.inputs
+    ] == [("minimum_value", "int", "1")]
+    assert [
+        (consumer.input_id, consumer.node_id, consumer.parameter_name)
+        for consumer in result.workflow.input_consumers
+    ] == [("minimum_value", "identity", "minimum_value")]
     assert (
         result.workflow.nodes[0].span.start.line
         < result.workflow.nodes[0].span.end.line
@@ -221,6 +233,71 @@ def source(): pass
     assert result.workflow is not None
     assert result.workflow.nodes == ()
     assert result.diagnostics[0].code is DiagnosticCode.UNSUPPORTED_MANAGED_DECORATOR
+
+
+def test_parse_workflow_definition_captures_pydantic_inputs_and_consumers() -> None:
+    result = parse_workflow_definition(
+        """\
+from typing import Annotated
+
+from pydantic import BaseModel
+
+class RunInputs(BaseModel):
+    region: str = "EU"
+    minimum_value: int
+
+workflow = Workflow("main", inputs=RunInputs)
+
+@workflow.transform("clean-orders")
+def clean_orders(
+    region: Annotated[str, workflow.input("region")],
+    minimum_value: Annotated[int, workflow.input("minimum_value")],
+): pass
+"""
+    )
+
+    assert result.diagnostics == ()
+    assert result.workflow is not None
+    assert [
+        (
+            workflow_input.id,
+            workflow_input.type_expression,
+            workflow_input.default_expression,
+        )
+        for workflow_input in result.workflow.inputs
+    ] == [("region", "str", "'EU'"), ("minimum_value", "int", None)]
+    assert [
+        (consumer.input_id, consumer.node_id, consumer.parameter_name)
+        for consumer in result.workflow.input_consumers
+    ] == [
+        ("region", "clean-orders", "region"),
+        ("minimum_value", "clean-orders", "minimum_value"),
+    ]
+    assert result.workflow.edges == ()
+
+
+def test_parse_workflow_definition_reports_unknown_workflow_input_consumers() -> None:
+    result = parse_workflow_definition(
+        """\
+from typing import Annotated
+
+from pydantic import BaseModel
+
+class RunInputs(BaseModel):
+    region: str
+
+workflow = Workflow("main", inputs=RunInputs)
+
+@workflow.transform("clean-orders")
+def clean_orders(
+    country: Annotated[str, workflow.input("country")],
+): pass
+"""
+    )
+
+    assert result.workflow is not None
+    assert result.workflow.input_consumers == ()
+    assert result.diagnostics[0].code is DiagnosticCode.UNKNOWN_WORKFLOW_INPUT
 
 
 def test_parse_workflow_definition_resolves_dependencies_by_function_name() -> None:

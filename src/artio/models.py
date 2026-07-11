@@ -59,6 +59,26 @@ class DeclaredEdge:
 
 
 @dataclass(frozen=True)
+class WorkflowInput:
+    """One typed field declared by a Workflow's Pydantic input model."""
+
+    id: str
+    type_expression: str
+    default_expression: str | None
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
+class WorkflowInputConsumer:
+    """A Transformation parameter that consumes a declared Workflow input."""
+
+    input_id: str
+    node_id: str
+    parameter_name: str
+    span: SourceSpan
+
+
+@dataclass(frozen=True)
 class WorkflowGraph:
     """The revisioned graph derived from a valid Workflow definition."""
 
@@ -66,6 +86,8 @@ class WorkflowGraph:
     revision: int
     nodes: tuple[ManagedNode, ...]
     edges: tuple[DeclaredEdge, ...]
+    inputs: tuple[WorkflowInput, ...] = ()
+    input_consumers: tuple[WorkflowInputConsumer, ...] = ()
 
     def __post_init__(self) -> None:
         if self.revision < 1:
@@ -116,6 +138,8 @@ class DiagnosticCode(StrEnum):
     UNKNOWN_DEPENDENCY = "unknown-dependency"
     UNSUPPORTED_OUTPUT_DECLARATION = "unsupported-output-declaration"
     UNKNOWN_OUTPUT_TARGET = "unknown-output-target"
+    UNSUPPORTED_INPUT_MODEL = "unsupported-input-model"
+    UNKNOWN_WORKFLOW_INPUT = "unknown-workflow-input"
 
 
 @dataclass(frozen=True)

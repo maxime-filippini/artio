@@ -13,11 +13,16 @@ from typing import get_origin
 from typing import get_type_hints
 
 import polars as pl
+from pydantic import BaseModel
 
 from artio.exceptions import ArgumentDependsOnNonExistentComponentError
 from artio.exceptions import ArgumentMissingSourceInformation
+from artio.exceptions import InputRequiresInputModelError
+from artio.exceptions import InvalidWorkflowInputModelError
+from artio.exceptions import InvalidWorkflowRunInputsError
 from artio.exceptions import MissingTypeHintInWorkflowComponentError
 from artio.exceptions import NonAnnotatedArgumentInWorkflowComponentError
+from artio.exceptions import UnknownWorkflowInputError
 
 
 def _validate_func_annotations(func: Callable[..., Any], workflow: Workflow):
@@ -38,17 +43,22 @@ def _validate_func_annotations(func: Callable[..., Any], workflow: Workflow):
         found = False
 
         for arg in args:
-            if not isinstance(arg, Depends):
+            if not isinstance(arg, Depends | Input):
                 continue
 
-            source_id = arg.dep.id
             found = True
 
-            if (
-                source_id not in workflow.sources
-                and source_id not in workflow.transformations
-            ):
-                raise ArgumentDependsOnNonExistentComponentError
+            if isinstance(arg, Depends):
+                source_id = arg.dep.id
+                if (
+                    source_id not in workflow.sources
+                    and source_id not in workflow.transformations
+                ):
+                    raise ArgumentDependsOnNonExistentComponentError
+            elif workflow.inputs is None:
+                raise InputRequiresInputModelError
+            elif arg.id not in workflow.inputs.model_fields:
+                raise UnknownWorkflowInputError(arg.id)
 
             break
 
@@ -88,6 +98,13 @@ class Depends:
         self.dep = dep
 
 
+class Input:
+    """A typed parameter reference to one field in a Workflow input model."""
+
+    def __init__(self, id: str) -> None:
+        self.id = id
+
+
 @dataclass
 class Workflow:
     """A lightweight declaration container for an Artio workflow.
@@ -98,6 +115,7 @@ class Workflow:
     """
 
     name: str
+    inputs: type[BaseModel] | None = None
     fixtures: dict[str, Fixture] = field(default_factory=dict[str, Fixture])
     decision_trees: dict[str, DecisionTree] = field(
         default_factory=dict[str, DecisionTree]
@@ -110,6 +128,36 @@ class Workflow:
     outputs: dict[str, Transformation] = field(
         default_factory=dict[str, Transformation]
     )
+
+    def __post_init__(self) -> None:
+        if self.inputs is not None and (
+            not isinstance(self.inputs, type) or not issubclass(self.inputs, BaseModel)
+        ):
+            raise InvalidWorkflowInputModelError(
+                "Workflow inputs must be a Pydantic BaseModel class"
+            )
+
+    def input(self, id: str) -> Input:
+        """Reference a declared input field from a managed component parameter."""
+        if self.inputs is None:
+            raise InputRequiresInputModelError(
+                "Workflow inputs require an inputs=BaseModel declaration"
+            )
+        if id not in self.inputs.model_fields:
+            raise UnknownWorkflowInputError(id)
+        return Input(id)
+
+    def validate_run_inputs(self, inputs: BaseModel) -> BaseModel:
+        """Require the configured Pydantic model instance before execution."""
+        if self.inputs is None:
+            raise InputRequiresInputModelError(
+                "Workflow execution requires an inputs=BaseModel declaration"
+            )
+        if not isinstance(inputs, self.inputs):
+            raise InvalidWorkflowRunInputsError(
+                f"Expected an instance of {self.inputs.__name__}"
+            )
+        return inputs
 
     def source(self, id: str):
         # Register a source on the workflow

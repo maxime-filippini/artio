@@ -11,6 +11,8 @@ from artio.models import ManagedNodeKind
 from artio.models import SourcePosition
 from artio.models import SourceSpan
 from artio.models import WorkflowGraph
+from artio.models import WorkflowInput
+from artio.models import WorkflowInputConsumer
 
 
 def test_workflow_graph_captures_nodes_edges_and_revision() -> None:
@@ -40,6 +42,37 @@ def test_workflow_graph_captures_nodes_edges_and_revision() -> None:
 
     assert graph.nodes == (source, transformation)
     assert graph.edges == (DeclaredEdge(source_id="orders", target_id="clean_orders"),)
+
+
+def test_workflow_graph_captures_inputs_and_consumers_outside_the_dag() -> None:
+    span = SourceSpan(
+        start=SourcePosition(line=3, column=0),
+        end=SourcePosition(line=3, column=20),
+    )
+    workflow_input = WorkflowInput(
+        id="minimum_value",
+        type_expression="int",
+        default_expression="1",
+        span=span,
+    )
+    consumer = WorkflowInputConsumer(
+        input_id="minimum_value",
+        node_id="clean-orders",
+        parameter_name="minimum_value",
+        span=span,
+    )
+
+    graph = WorkflowGraph(
+        name="main",
+        revision=1,
+        nodes=(),
+        edges=(),
+        inputs=(workflow_input,),
+        input_consumers=(consumer,),
+    )
+
+    assert graph.inputs == (workflow_input,)
+    assert graph.input_consumers == (consumer,)
 
 
 @pytest.mark.parametrize(

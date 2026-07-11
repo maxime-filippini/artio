@@ -27,11 +27,17 @@ WORKFLOW_TEMPLATE = '''\
 from typing import Annotated
 
 import polars as pl
+from pydantic import BaseModel
 
 from artio import Depends
 from artio import Workflow
 
-workflow = Workflow("main")
+
+class Inputs(BaseModel):
+    minimum_value: int = 1
+
+
+workflow = Workflow("main", inputs=Inputs)
 
 
 @workflow.fixture("source")
@@ -53,9 +59,12 @@ def source() -> pl.LazyFrame:
 
 
 @workflow.transform("identity")
-def identity(source: Annotated[pl.LazyFrame, Depends(source)]) -> pl.LazyFrame:
+def identity(
+    source: Annotated[pl.LazyFrame, Depends(source)],
+    minimum_value: Annotated[int, workflow.input("minimum_value")],
+) -> pl.LazyFrame:
     """Add Polars transformations here."""
-    return source
+    return source.filter(pl.col("id") >= minimum_value)
 
 
 workflow.output("result", identity)
