@@ -30,11 +30,15 @@ the component has an independently valuable boundary.
 
 ## Issue workflow
 
-Track each independently deliverable vertical slice as one GitHub issue. Use
-separate issues for substantial follow-up work that can be reviewed and shipped
-independently; keep closely coupled checklist items together. Link commits and
-pull requests to their issue, and use `Closes #<issue-number>` in the PR body
-when the PR completes the issue.
+Track each vertical slice with a parent GitHub issue that states its user
+outcome, demo, and acceptance criteria. Create one linked sub-issue for each
+PR-sized implementation item in the slice plan. Keep sub-issues tightly scoped
+and limit the slice to two to five PRs.
+
+Each implementation PR must use `Closes #<sub-issue-number>` in its body. Keep
+the parent issue open until the slice demo passes; the final integration PR
+uses `Closes #<parent-issue-number>`. Create a separate parent issue only for a
+substantial follow-up outcome that can be reviewed and shipped independently.
 
 ## Verification
 
